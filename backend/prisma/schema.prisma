@@ -1,0 +1,459 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── TENANT (Local / Negocio) ────────────────────────────────────────────────
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      Plan     @default(FREE)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              User[]
+  products           Product[]
+  categories         Category[]
+  orders             Order[]
+  tables             Table[]
+  shifts             Shift[]
+  expenses           Expense[]
+  cadetes            Cadete[]
+  shiftCollaborators ShiftCollaborator[]
+  waSessionStates    WaSessionState[]
+  waMessages         WaMessage[]
+  customers          Customer[]
+
+  @@map("tenants")
+}
+
+// ─── USER ────────────────────────────────────────────────────────────────────
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  name         String
+  role         Role     @default(STAFF)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders              Order[]
+  shiftsOpened        Shift[]             @relation("ShiftOpener")
+  expenses            Expense[]
+  shiftCollaborations ShiftCollaborator[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+// ─── CATEGORY ────────────────────────────────────────────────────────────────
+model Category {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("categories")
+}
+
+// ─── PRODUCT (UNIFICADO: TODO EN UNA TABLA) ─────────────────────────────────
+model Product {
+  id                String           @id @default(cuid())
+  tenantId          String
+  name              String
+  description       String?
+  price             Decimal          @db.Decimal(10, 2)
+  pricePerKg        Decimal?         @db.Decimal(10, 2)
+  imageUrl          String?
+  isAvailable       Boolean          @default(true)
+  isAvailableForBot Boolean          @default(true)
+  
+  // Campos unificados obligatorios
+  unitType          UnitType         @default(UNIT)
+  section           ProductSection   @default(KILO)
+  category          ProductCategory? // COMIDA o BEBIDA (solo para CARTA)
+  destination       KitchenStation?  // COCINA, BARRA, DESPACHO
+  prepTime          Int?             // Tiempo de preparación en minutos
+  sortOrder         Int              @default(0)
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+// ─── TABLE ───────────────────────────────────────────────────────────────────
+model Table {
+  id        String      @id @default(cuid())
+  tenantId  String
+  number    Int
+  capacity  Int         @default(4)
+  status    TableStatus @default(AVAILABLE)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@unique([tenantId, number])
+  @@map("tables")
+}
+
+// ─── SHIFT (Turno de Caja) ────────────────────────────────────────────────────
+// El cajero solo ve su propio turno. Aislamiento total entre turnos.
+model Shift {
+  id           String      @id @default(cuid())
+  tenantId     String
+  openedById   String
+  openedAt     DateTime    @default(now())
+  closedAt     DateTime?
+  initialCash  Decimal     @db.Decimal(10, 2)
+  finalCash    Decimal?    @db.Decimal(10, 2)
+  expectedCash Decimal?    @db.Decimal(10, 2)
+  difference   Decimal?    @db.Decimal(10, 2)
+  status       ShiftStatus @default(OPEN)
+  notes        String?
+  
+  // Rendición de Delivery
+  deliverySettlementAmount Decimal?  @db.Decimal(10, 2)
+  deliverySettlementBy     String?
+  deliverySettlementAt     DateTime?
+  
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  openedBy      User                @relation("ShiftOpener", fields: [openedById], references: [id])
+  orders        Order[]
+  expenses      Expense[]
+  collaborators ShiftCollaborator[]
+
+  @@map("shifts")
+}
+
+// ─── SHIFT COLLABORATOR (Colaboradores del Turno) ────────────────────────────
+// Usuarios invitados por el cajero principal a operar en su turno.
+model ShiftCollaborator {
+  id       String   @id @default(cuid())
+  tenantId String
+  shiftId  String
+  userId   String
+  addedAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shift  Shift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftId, userId])
+  @@map("shift_collaborators")
+}
+
+// ─── CADETE (Repartidores) ───────────────────────────────────────────────────
+model Cadete {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("cadetes")
+}
+
+// ─── EXPENSE (UNIFICADO: CASH, STRUCTURAL, SUPPLIES) ─────────────────────────
+model Expense {
+  id       String  @id @default(cuid())
+  tenantId String
+  shiftId  String? // Solo para type=CASH
+  userId   String?
+
+  type        ExpenseType
+  category    String? // "Alquiler", "Sueldo", "Limpieza", etc.
+  description String
+  amount      Decimal     @db.Decimal(10, 2)
+  currency    String      @default("ARS")
+
+  // Para gastos estructurales
+  period  String?
+  dueDate DateTime?
+  paidAt  DateTime?
+  isPaid  Boolean   @default(false)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shift  Shift? @relation(fields: [shiftId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@map("expenses")
+}
+
+// ─── ORDER (UNIFICADO: soporta UNIT, KG, PORTION) ────────────────────────────
+model Order {
+  id         String  @id @default(cuid())
+  tenantId   String
+  shiftId    String
+  userId     String?
+  customerId String?
+  cadeteId   String?
+  tableId    String?
+
+  // Metadata
+  orderNumber  Int
+  customerName String
+
+  // Delivery
+  isDelivery      Boolean @default(false)
+  deliveryAddress String?
+  deliveryPhone   String?
+  deliveryLat     Float?
+  deliveryLng     Float?
+
+  // Payment
+  paymentMethod    String   @default("EFECTIVO")
+  isPaid           Boolean  @default(false)
+  paidAt           DateTime?
+  cadetePaidAmount Decimal  @default(0) @db.Decimal(10, 2)
+
+  // Status (Estado de ENTREGA del pedido)
+  isSentToKitchen Boolean     @default(false)
+  status          OrderStatus @default(PENDING)
+  totalPrice      Decimal     @default(0) @db.Decimal(10, 2)
+
+  // WhatsApp Integration
+  source OrderSource @default(LOCAL)
+  waJid  String?
+
+  // Thermal Print Tracking (para tickets híbridos con adiciones)
+  lastPrintedItems Json?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shift    Shift       @relation(fields: [shiftId], references: [id])
+  table    Table?      @relation(fields: [tableId], references: [id])
+  user     User?       @relation(fields: [userId], references: [id])
+  customer Customer?   @relation("CustomerOrders", fields: [customerId], references: [id])
+  cadete   Cadete?     @relation(fields: [cadeteId], references: [id])
+  items    OrderItem[]
+
+  @@unique([shiftId, orderNumber])
+  @@map("orders")
+}
+
+// ─── ORDER ITEM (UNIFICADO: soporta UNIT, KG, PORTION) ──────────────────────
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String? // Referencia a Product (nullable para flexibilidad)
+
+  // Unificado: soporta unidades, kg y porciones
+  unitType  UnitType @default(UNIT)
+  quantity  Decimal  @db.Decimal(8, 3) // 1.5kg, 2 unidades, 0.5 porción
+  unitPrice Decimal  @db.Decimal(10, 2)
+  subtotal  Decimal  @db.Decimal(10, 2)
+
+  // Destino de la comanda (heredado de Product.destination)
+  destination KitchenStation?
+
+  notes String?
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+enum Role {
+  OWNER
+  MANAGER
+  CASHIER
+  COOK
+  STAFF
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum UnitType {
+  UNIT // Por unidad (1 pizza, 2 empanadas)
+  KG // Por kilaje (1.5kg de paella)
+  PORTION // Por porción (1/2 pollo, 1/4 torta)
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum ExpenseType {
+  CASH // Caja chica (insumos, delivery, limpieza)
+  STRUCTURAL // Alquiler, sueldos, impuestos
+  SUPPLIES // Compras de mercadería
+}
+
+enum ExpenseCategory {
+  RENT
+  SALARY
+  TAX
+  UTILITY
+  SUPPLIER
+  MAINTENANCE
+  OTHER
+}
+
+// ─── ENUMS PARA WHATSAPP ───────────────────────────────────────────────────
+enum OrderSource {
+  LOCAL
+  WHATSAPP
+}
+
+enum WaChatState {
+  TALKING
+  PENDING
+  COMPLETED
+  NO_REPLY
+}
+
+// ─── ENUMS PARA PRODUCTOS ──────────────────────────────────────────────────
+enum ProductSection {
+  KILO // Productos por kilaje
+  CARTA // Productos de carta (comidas y bebidas)
+}
+
+enum ProductCategory {
+  COMIDA // Comidas
+  BEBIDA // Bebidas
+}
+
+enum KitchenStation {
+  COCINA   // Cocina
+  BARRA    // Barra
+  DESPACHO // Kilaje/Entrega (para comandas completas)
+}
+
+// ─── CUSTOMER (Clientes y Fidelización) ───────────────────────────────────
+model Customer {
+  id          String    @id @default(cuid())
+  tenantId    String
+  phone       String
+  name        String?
+  email       String?
+  notes       String?
+  totalOrders Int       @default(0)
+  totalSpent  Decimal   @default(0) @db.Decimal(10, 2)
+  lastOrderAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  addresses Address[]
+  orders    Order[]       @relation("CustomerOrders")
+  tags      CustomerTag[]
+
+  @@unique([tenantId, phone])
+  @@map("customers")
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  customerId String
+  street     String
+  reference  String?
+  lat        Float?
+  lng        Float?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+model CustomerTag {
+  id         String   @id @default(cuid())
+  customerId String
+  tag        String
+  value      String?
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, tag])
+  @@map("customer_tags")
+}
+
+// ─── MODELO DE MEMORIA Y CRM (WHATSAPP) ───────────────────────────────────
+model WaSessionState {
+  id                String      @id @default(cuid())
+  tenantId          String
+  jid               String
+  customerId        String?
+  chatState         WaChatState @default(TALKING)
+  isPaused          Boolean     @default(false)
+  lastMessage       String?
+  lastInteractionAt DateTime    @default(now())
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages WaMessage[]
+
+  @@unique([tenantId, jid])
+  @@map("wa_session_states")
+}
+
+model WaMessage {
+  id        String   @id @default(cuid())
+  tenantId  String
+  jid       String
+  fromMe    Boolean
+  text      String   @db.Text
+  timestamp DateTime @default(now())
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session WaSessionState? @relation(fields: [tenantId, jid], references: [tenantId, jid], onDelete: Cascade)
+
+  @@index([tenantId, jid, timestamp])
+  @@map("wa_messages")
+}

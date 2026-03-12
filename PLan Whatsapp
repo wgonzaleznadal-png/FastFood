@@ -1,0 +1,212 @@
+# 🚀 MASTER PLAN: Ecosistema WhatsApp CRM (GastroDash 2.0 x Plaza Nadal)
+
+## 📌 1. CONTEXTO DEL NEGOCIO Y VISIÓN
+GastroDash 2.0 es el sistema operativo de Gastronomicos, implementando para Plaza Nadal (un negocio gastronómico de alto volumen que vende por peso). Actualmente, el sistema transaccional (Caja, Pedidos, Finanzas, Delivery) funciona al 100%. 
+
+**El objetivo de este sprint** es inyectar un módulo de WhatsApp que no sea un simple chatbot, sino un **"Telefonista Virtual" + "CRM Operativo"**. 
+Este bot debe vender cuando el local está abierto, informar cuando está cerrado, y permitir que un humano tome el control (Handoff) si las cosas se complican, todo integrado en una interfaz de 3 columnas dentro de la caja actual.
+
+### 🛑 REGLAS DE ORO (PROHIBICIONES ESTRICTAS PARA EL AGENTE WINDSURF)
+1. **NO ROMPER LO EXISTENTE:** El flujo actual de `KgOrdersModule.tsx` y `menu.service.ts` no se toca. El bot es una EXTENSIÓN. Todo código nuevo debe ser una EXTENSIÓN (Add-on), no una reescritura.
+2. **CERO TAILWIND CSS:** GastroDash utiliza **Next.js 15 App Router + Mantine v7**. Está TERMINANTEMENTE PROHIBIDO usar clases de Tailwind. Usa los componentes de Mantine (`Stack`, `Group`, `Text`, `Paper`) y clases CSS Modules siguiendo nuestra estetica o el archivo `globals.css` (ej: `.gd-card`, `.gd-content`).
+3. **MULTITENANT A MUERTE:** Todo registro y consulta en Prisma DEBE llevar su `tenantId`. No se mezclan datos entre empresas.
+4. **LOCALIZACIÓN:** Todo formato de moneda, tanto en la UI como en los mensajes de la IA, debe usar la función existente `fmt()` (Formato: `$ 1.500,00`) y el IDIOMA ES ESPAñOL (para el frontend  )
+
+---
+
+## 🏗️ 2. ARQUITECTURA DE DATOS (Prisma Schema)
+*Ubicación: `prisma/schema.prisma`*
+
+Debemos dotar de "memoria" al bot y permitir que los pedidos sepan que vienen de WhatsApp. Agrega lo siguiente al final del archivo existente:
+
+```prisma
+// ─── ENUMS PARA WHATSAPP ───
+enum OrderSource {
+  LOCAL
+  WHATSAPP
+}
+
+enum WaChatState {
+  TALKING      // Celeste: Conversando activamente
+  PENDING      // Amarillo: Pendiente (ej. pidió algo sin stock, requiere atención)
+  COMPLETED    // Verde: Pedido cerrado/confirmado por el cliente
+  NO_REPLY     // Rojo: Sin respuesta del cliente por más de 10 minutos
+}
+
+// ─── MODELO DE MEMORIA Y CRM (WHATSAPP) ───
+model WaSessionState {
+  id                String      @id @default(cuid())
+  tenantId          String
+  jid               String      // Número de WhatsApp del cliente (ej: 5493794148962@s.whatsapp.net)
+  customerName      String?     // Nombre extraído de WhatsApp
+  chatState         WaChatState @default(TALKING)
+  isPaused          Boolean     @default(false) // TRUE = Humano al mando (Bot callado)
+  lastMessage       String?     // Último mensaje para mostrar en la preview del CRM
+  lastInteractionAt DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, jid])
+  @@map("wa_session_states")
+}
+Actualización en modelo existente KgOrder (solo añadir estos campos):
+
+Fragmento de código
+model KgOrder {
+  // ... campos existentes ...
+  
+  // ─── INTEGRACIÓN WHATSAPP ───
+  source      OrderSource @default(LOCAL)
+  waJid       String?     // Para linkear el pedido al chat exacto del cliente
+}
+
+⚙️ 3. EL MOTOR BACKEND (Express + Baileys)
+Ubicación: backend/src/modules/whatsapp/
+
+Vamos a usar @whiskeysockets/baileys para conectar WhatsApp Web sin API oficial.
+
+whatsapp.service.ts: Maneja la conexión, genera el QR en consola/UI, y escucha los mensajes entrantes (messages.upsert).
+
+Handoff Invisible (Lógica de interrupción):
+
+Si WaSessionState.isPaused === true, el bot ignora los mensajes entrantes.
+
+Si el operador humano escribe desde el teléfono de la empresa "me llamo Carlos", el bot lo detecta (fromMe: true) y setea isPaused = true.
+
+Si el operador escribe "asistente", setea isPaused = false y la IA retoma.
+
+🧠 4. EL CEREBRO IA (OpenAI + Contexto de Negocio)
+Ubicación: backend/src/modules/whatsapp/whatsapp.ai.ts
+
+🔒 REGLA DE SEGURIDAD VITAL: Candado de Turno
+Antes de que la IA responda, el backend DEBE verificar si hay un turno abierto (Shift) para ese tenantId:
+
+TypeScript
+const openShift = await prisma.shift.findFirst({ 
+  where: { tenantId, status: 'OPEN' } 
+});
+Prompt Dinámico basado en Situaciones Reales:
+SITUACIÓN A (Local Abierto - openShift: true):
+
+System Prompt: "Sos el asistente de Plaza Nadal. Estás en MODO VENTA. Vendemos comida por kilo. Regla: se calcula aprox 0.5kg por persona.. 1 kg o 1.5 kg se calculan para 2 personas, siempre intentantamos vender mas. Si son 4, sugerí 2.5 o 3kg. Hablá en argentino, amable y directo. Precios con $. Usá tools para consultar stock y confirmar pedidos."
+
+SITUACIÓN B (Local Cerrado - openShift: false):
+
+System Prompt: "Sos el asistente de Plaza Nadal. Estás en MODO INFORMATIVO. La caja está cerrada. NO podés vender ni tomar pedidos. Si piden comida, pedí disculpas, informá que estamos cerrados y pasá los horarios de atención."
+
+Tools (Llamadas a funciones de la IA):
+checkAvailability(productName): Busca en Product (isAvailable: true). Si un cliente pide Paella y no hay, la IA le ofrece Arroz con Pollo y el estado del chat (WaSessionState.chatState) pasa a PENDING (Amarillo).
+
+confirmWaOrder(items, isDelivery, customerData): Dispara la creación del KgOrder en Prisma (asignándole el openShift.id, source: WHATSAPP, status: PENDING). El chat pasa a COMPLETED (Verde).
+
+💻 5. EL FRONTEND: WHATSAPP CRM (Next.js + Mantine)
+Ubicación: frontend/src/app/dashboard/caja/components/WhatsAppCommandCenter.tsx
+
+La pestaña "WhatsApp" del KgOrdersModule dejará de estar deshabilitada y cargará este nuevo componente.
+Debe ser un layout estricto de 3 columnas (simulando WhatsApp Web, pero vitaminado para ventas).
+
+Columna Izquierda (22%): Historial Vivo (Nunca se borra)
+Funcionalidad: Muestra TODOS los chats registrados (WaSessionState), ordenados por lastInteractionAt descendente. Igual que en WhatsApp Web, los chats bajan si no hay actividad, pero nunca desaparecen. se le agrega una pill siguiendo la estetica y encontrando la ubicacion teniendo en cuenta el equilibrio de la card de cada "chat" que cambia de color con los indicadores de estado
+
+UI: Avatar, Nombre/Número, y un truncado del lastMessage.
+
+Indicadores de Estado (Mantine Badge o Indicator al lado del chat):
+
+🔵 Celeste (TALKING): El bot está charlando con el cliente.
+
+🟡 Amarillo (PENDING): Hubo un roce (ej. falta de stock, o el cliente hizo una pregunta compleja). Requiere ojo humano.
+
+🟢 Verde (COMPLETED): ¡Venta cerrada por el bot!
+
+🔴 Rojo (NO_REPLY): El bot preguntó algo hace +10 mins y el cliente colgó.
+
+⛔ Gris/Tachado (isPaused: true): El bot está pausado, un humano está manejando este chat.
+
+Columna Central (53%): Viewport del Chat e Intervención
+Muestra los mensajes de la conversación seleccionada.
+
+Input Inferior: Si el telefonista escribe y envía un mensaje desde aquí, el backend lo envía por Baileys y automáticamente pausa a la IA (isPaused = true).
+
+Debe haber un botón rápido de "Reactivar Bot" para devolverle el control a la IA (isPaused = false).
+
+Columna Derecha (25%): Sidebar (Pedidos por whatsapp)
+Filtro estricto: Muestra SOLO los KgOrder que tengan source: WHATSAPP y del shiftId actual, se reubican de manera inteligente si el estado paso a pagado , mediante el link del bot o si retiro en efectivo el cajero modifico de la tabla general e impacto aca tambien. aca reflejamos los pedidos que hizo el bot en la tabla general.
+
+UI: Cards (.gd-card) limpias informando el resumen de la venta cerrada por la IA.
+
+Botones de Acción:
+
+necesitamos un boton de configuracion de whatsapp que abra un drawer de formulario donde vamos a poder configurar el bot.. la api.. el resume/pause (el comando que lo activa o desactiva) entre otras configuraciones que creas necesarias como tal vez una vez que estea activo su "rol" "reglas" etc
+
+me lo imagino tal vez a la derecha en la esquina de este 100% (NO donde estan ubicados los 4 botones fijos del top bar  ) puede ser la esquina del "Columna Derecha (25%): Sidebar (Pedidos por whatsapp) o del "Columna Central (53%): Viewport del Chat e Intervención".
+
+🔄 6. FLUJOS DE USO REALES (Para QA del Agente)
+Flujo 6.1: Venta Perfecta (El Bot hace todo)
+Cliente: "Hola, quiero Arroz con pollo para 3 personas para envío."
+
+Bot: "¡Hola! ¿Como estas? Para 3 te calculo 1.5kg o 2kg. Sale $ x el kilo. ¿Cuantos Kilos queres? te recomiendo 2 😉"
+
+Cliente: "me convenciste, mandame 2 kg."
+
+Bot: "Perfecto! a que direccion te enviamos?"
+
+Cliente: "San Martin 1234"
+
+Bot: "Entonces tenemos
+2 kg de Arroz con pollo
+pago en efectivo (no aclaro mp)
+Envio a San Martin 1234
+el total es $(calcula precio x kg por cantidad de kg) el cadete es aparte!
+confirmame tu pedido porfavor y lo envio a Cocina🙌🏻 "
+
+Cliente: "Asi es! avisame cuando sale"
+
+Bot ejecuta confirmWaOrder. Prisma crea el KgOrder. El chat se pone Verde. El pedido aparece en la Columna Derecha del Frontend.
+(la carga fue en general y de ahi con los filtros se replico en delivery y wpp
+delivery:true whatsapp:true impacta en ambos estado :pendiente)
+Bot envia comanda a general, por ser un delivery la comanda ya se imprime para el cadete y se deriva el pedido a el encargado de delivery.. esta comanda que se creo desde la tabla general tiene un numero de pedido
+
+BOT: "su pedido ya esta en Cocina! N111 te avisamos cuando sale para alla! muchas gracias!"
+
+Delivery asigna un moto a pedido N111, automaticamente impacta eso en la tabla general, y por ende en el de wpp y el bot avisa
+
+BOT: "su pedido esta en buenas manos, se lo lleva Raul, ya esta en camino!"
+
+Flujo 6.2: Intervención Humana por Caos (Domingo al mediodía)
+El local explota. Cliente manda un audio de 2 minutos.
+
+Bot no entiende/falla. El chat en el CRM se pone Amarillo (Pendiente).
+
+El telefonista selecciona el chat, escucha el audio.
+
+Telefonista escribe en el input central: "Hola, soy Carlos, te tomo el pedido por acá." -> El bot se pausa automáticamente.
+
+Carlos carga el pedido a mano usando el layout tradicional de KgOrdersModule, no por el bot.
+
+Flujo 6.3: El Bucle de Pago MercadoPago (Crucial)
+El pedido confirmado está en la Columna Derecha. El telefonista toca "Cobrar por Link MP".
+
+Frontend hace POST a /api/whatsapp/send-payment-link.
+
+Backend Express genera link de MP y le manda el WhatsApp: "Acá tenés el link para pagar: [URL]. Avisame."
+
+Webhook de MP: Cuando el cliente paga, MercadoPago notifica al servidor.
+
+Backend actualiza Prisma (KgOrder.status = 'PAID', paymentMethod = 'MERCADO PAGO').
+
+Bot envía mensaje automático: "¡Pago recibido! Ya preparamos tu pedido."
+
+Reflejo Visual: El pedido desaparece de la columna de WhatsApp y viaja a la pestaña "Lista General" (Piso 1), listo para que la cocina lo despache.
+
+🏁 7. CRITERIOS DE ACEPTACIÓN
+[ ] La IA jamás vende si el Shift de ese Tenant está cerrado.
+
+[ ] La columna izquierda (Chats) renderiza correctamente los colores de los estados sin recargar la página (polling o websockets).
+
+[ ] El Handoff funciona bidireccionalmente (se pausa al escribir el humano, se reanuda con botón/comando).
+
+[ ] Todo el frontend respeta los tokens y estilos de Mantine v7 (cero Tailwind).
+
+[ ] Un pedido pagado por MP a través de WhatsApp actualiza correctamente la contabilidad del Shift en curso.
+
+PD: el bot no va a poder escuchar audios, ni leer imagenes, un mensaje que diga no puedo hacer eso amablemente.

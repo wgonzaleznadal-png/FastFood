@@ -1,0 +1,67 @@
+import { z } from 'zod';
+
+// ─── SCHEMAS PARA ORDER UNIFICADO ────────────────────────────────────────────
+
+export const createOrderItemSchema = z.object({
+  productId: z.string().cuid(),
+  unitType: z.enum(['UNIT', 'KG', 'PORTION']).default('UNIT'),
+  quantity: z.number().positive(),
+  unitPrice: z.number().positive(),
+  subtotal: z.number().positive(),
+  notes: z.string().optional(),
+});
+
+export const createOrderSchema = z.object({
+  shiftId: z.string().cuid(),
+  userId: z.string().cuid().optional(),
+  customerId: z.string().cuid().optional(),
+  cadeteId: z.string().cuid().optional(),
+  tableId: z.string().cuid().optional(),
+  orderNumber: z.number().int().positive(),
+  customerName: z.string().min(1),
+  isDelivery: z.boolean().default(false),
+  deliveryAddress: z.string().optional(),
+  deliveryPhone: z.string().optional(),
+  deliveryLat: z.number().optional(),
+  deliveryLng: z.number().optional(),
+  paymentMethod: z.string().default('EFECTIVO'),
+  cadetePaidAmount: z.number().default(0),
+  isSentToKitchen: z.boolean().default(false),
+  status: z.enum(['PENDING', 'IN_PROGRESS', 'READY', 'DELIVERED', 'CANCELLED']).default('PENDING'),
+  source: z.enum(['LOCAL', 'WHATSAPP']).default('LOCAL'),
+  waJid: z.string().optional(),
+  notes: z.string().optional(),
+  items: z.array(createOrderItemSchema).min(1),
+});
+
+export const updateOrderSchema = z.object({
+  customerName: z.string().min(1).optional(),
+  isDelivery: z.boolean().optional(),
+  deliveryAddress: z.string().optional(),
+  deliveryPhone: z.string().optional(),
+  deliveryLat: z.number().optional(),
+  deliveryLng: z.number().optional(),
+  paymentMethod: z.string().optional(),
+  cadetePaidAmount: z.number().optional(),
+  isSentToKitchen: z.boolean().optional(),
+  status: z.enum(['PENDING', 'IN_PROGRESS', 'READY', 'DELIVERED', 'CANCELLED']).optional(),
+  notes: z.string().optional(),
+  items: z.array(createOrderItemSchema).optional(),
+});
+
+export const assignCadeteSchema = z.object({
+  cadeteId: z.string().cuid(),
+});
+
+export const updateStatusSchema = z.object({
+  status: z.enum(['PENDING', 'IN_PROGRESS', 'READY', 'DELIVERED', 'CANCELLED']),
+});
+
+export const updateCoordsSchema = z.object({
+  deliveryLat: z.number(),
+  deliveryLng: z.number(),
+});
+
+export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+export type UpdateOrderInput = z.infer<typeof updateOrderSchema>;
+export type CreateOrderItemInput = z.infer<typeof createOrderItemSchema>;
