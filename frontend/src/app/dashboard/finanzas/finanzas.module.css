@@ -1,0 +1,7 @@
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gd-space-4);
+  flex-wrap: wrap;
+}

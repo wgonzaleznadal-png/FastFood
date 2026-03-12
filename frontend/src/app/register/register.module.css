@@ -1,0 +1,67 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gd-space-6);
+  background: linear-gradient(135deg, #fff7ed 0%, #f8fafc 50%, #fff7ed 100%);
+  gap: var(--gd-space-6);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--gd-space-2);
+}
+
+.brandName {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--gd-brand-secondary);
+  letter-spacing: -0.02em;
+}
+
+.brandVersion {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--gd-brand-primary);
+  color: white;
+  padding: 2px 6px;
+  border-radius: var(--gd-radius-sm);
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.card {
+  width: 100%;
+  max-width: 460px;
+  border: 1px solid var(--gd-border) !important;
+}
+
+.title {
+  font-size: 1.375rem !important;
+  font-weight: 700 !important;
+  color: var(--gd-text-primary) !important;
+}
+
+.subtitle {
+  color: var(--gd-text-secondary);
+  font-size: 0.9375rem;
+  margin-top: var(--gd-space-1);
+}
+
+.footer {
+  color: var(--gd-text-secondary);
+  font-size: 0.875rem;
+}
+
+.link {
+  color: var(--gd-brand-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}

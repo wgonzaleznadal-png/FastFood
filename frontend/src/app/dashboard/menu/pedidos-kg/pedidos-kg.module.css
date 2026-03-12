@@ -1,0 +1,93 @@
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gd-space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--gd-space-6);
+}
+
+/* ── Two-column layout: catalog + cart ── */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: var(--gd-space-5);
+  align-items: flex-start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Product catalog ── */
+.catalog {
+  background: var(--gd-surface);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-lg);
+  padding: var(--gd-space-5);
+  box-shadow: var(--gd-shadow-sm);
+}
+
+.productCard {
+  display: block;
+  width: 100%;
+  padding: var(--gd-space-4);
+  background: var(--gd-bg);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--gd-transition-fast), box-shadow var(--gd-transition-fast), transform var(--gd-transition-fast);
+  font-family: inherit;
+}
+
+.productCard:hover:not(:disabled) {
+  border-color: var(--gd-brand-primary);
+  box-shadow: var(--gd-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.productCard:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Cart panel ── */
+.cartPanel {
+  background: var(--gd-surface);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-lg);
+  padding: var(--gd-space-5);
+  box-shadow: var(--gd-shadow-sm);
+  position: sticky;
+  top: calc(var(--gd-header-height) + var(--gd-space-4));
+}
+
+.emptyCart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gd-space-8) var(--gd-space-4);
+  color: var(--gd-text-muted);
+  text-align: center;
+}
+
+.cartItem {
+  padding: var(--gd-space-3);
+  background: var(--gd-bg);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-md);
+}
+
+/* ── Orders history ── */
+.ordersSection {
+  margin-top: var(--gd-space-8);
+  background: var(--gd-surface);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-lg);
+  padding: var(--gd-space-5);
+  box-shadow: var(--gd-shadow-sm);
+}

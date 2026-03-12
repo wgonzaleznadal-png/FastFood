@@ -1,0 +1,90 @@
+.deliveryLayout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: 1fr auto;
+  gap: var(--gd-space-4);
+  margin-top: var(--gd-space-4);
+  min-height: calc(100vh - 200px);
+}
+
+.mapZone {
+  grid-column: 1;
+  grid-row: 1;
+  background: var(--gd-card-bg);
+  border-radius: var(--gd-radius-lg);
+  border: 1px solid var(--gd-border);
+  overflow: hidden;
+  min-height: 400px;
+}
+
+.mapPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--gd-bg-secondary);
+}
+
+.assignmentZone {
+  grid-column: 2;
+  grid-row: 1;
+  background: var(--gd-card-bg);
+  border-radius: var(--gd-radius-lg);
+  border: 1px solid var(--gd-border);
+  padding: var(--gd-space-4);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 200px);
+  overflow: hidden;
+}
+
+.cadeteDock {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.cadeteCardsRow {
+  display: flex;
+  gap: var(--gd-space-4);
+  padding: var(--gd-space-1) 0;
+}
+
+.cadeteCardAdd {
+  min-width: 160px;
+  min-height: 120px;
+  border: 2px dashed var(--gd-border);
+  background: var(--gd-bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.cadeteCardAdd:hover {
+  border-color: var(--gd-brand-primary);
+  background: rgba(249, 115, 22, 0.05);
+}
+
+@media (max-width: 1024px) {
+  .deliveryLayout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 300px auto auto;
+  }
+
+  .mapZone {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 300px;
+  }
+
+  .assignmentZone {
+    grid-column: 1;
+    grid-row: 2;
+    max-height: none;
+  }
+
+  .cadeteDock {
+    grid-column: 1;
+    grid-row: 3;
+  }
+}

@@ -1,0 +1,435 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   WhatsApp Command Center — 3-Column CRM Layout
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.container {
+  display: grid;
+  grid-template-columns: 26% 48% 26%;
+  gap: 0;
+  height: calc(100vh - 200px);
+  min-height: 500px;
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-lg);
+  overflow: hidden;
+  background: var(--gd-surface);
+}
+
+/* ─── Column Left: Chat List ──────────────────────────────────────────────── */
+.chatList {
+  border-right: 2px solid var(--gd-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--gd-bg);
+}
+
+.chatListHeader {
+  padding: var(--gd-space-3) var(--gd-space-4);
+  border-bottom: 1px solid var(--gd-border);
+  background: var(--gd-card-bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gd-space-3);
+  flex-shrink: 0;
+}
+
+.chatListHeaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chatListHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: var(--gd-space-2);
+}
+
+.searchInput {
+  width: 100%;
+  padding: var(--gd-space-2) var(--gd-space-3);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-md);
+  background: var(--gd-surface);
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--gd-transition-fast);
+}
+
+.searchInput:focus {
+  border-color: var(--gd-brand-primary);
+}
+
+.stateFilters {
+  display: flex;
+  gap: var(--gd-space-2);
+  flex-wrap: nowrap;
+}
+
+.stateFilterBtn {
+  padding: 4px 6px;
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-sm);
+  background: var(--gd-surface);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all var(--gd-transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+
+.stateFilterBtn:hover {
+  background: var(--gd-bg);
+}
+
+.stateFilterBtn.active {
+  background: var(--gd-brand-primary);
+  color: white;
+  border-color: var(--gd-brand-primary);
+}
+
+.chatListScroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.chatItem {
+  display: flex;
+  align-items: center;
+  gap: var(--gd-space-3);
+  padding: var(--gd-space-3) var(--gd-space-4);
+  cursor: pointer;
+  transition: background var(--gd-transition-fast);
+  border-bottom: 1px solid var(--gd-border);
+  position: relative;
+}
+
+.chatItem:hover {
+  background: var(--gd-bg);
+}
+
+.chatItemActive {
+  background: rgba(249, 115, 22, 0.08);
+  border-left: 3px solid var(--gd-brand-primary);
+}
+
+.chatAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--gd-bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--gd-text-secondary);
+}
+
+.chatInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chatName {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--gd-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chatPreview {
+  font-size: 0.75rem;
+  color: var(--gd-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chatMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.chatTime {
+  font-size: 0.625rem;
+  color: var(--gd-text-muted);
+}
+
+/* State pills */
+.statePill {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stateTalking   { background: #22d3ee; } /* Celeste */
+.statePending   { background: #f59e0b; } /* Amarillo */
+.stateCompleted { background: #22c55e; } /* Verde */
+.stateNoReply   { background: #ef4444; } /* Rojo */
+.statePaused    { background: #9ca3af; } /* Gris */
+
+.emptyChats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--gd-space-6);
+  text-align: center;
+  color: var(--gd-text-muted);
+}
+
+/* ─── Column Center: Chat Viewport ────────────────────────────────────────── */
+.chatViewport {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--gd-surface);
+}
+
+.viewportHeader {
+  padding: var(--gd-space-3) var(--gd-space-4);
+  border-bottom: 1px solid var(--gd-border);
+  background: var(--gd-card-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gd-space-3);
+  flex-shrink: 0;
+}
+
+.viewportHeaderInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--gd-space-3);
+}
+
+.viewportHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: var(--gd-space-2);
+}
+
+.messagesArea {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--gd-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gd-space-2);
+}
+
+.messageBubble {
+  max-width: 75%;
+  padding: var(--gd-space-2) var(--gd-space-3);
+  border-radius: var(--gd-radius-md);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.messageIncoming {
+  align-self: flex-start;
+  background: var(--gd-surface);
+  border: 1px solid var(--gd-border);
+  color: var(--gd-text-primary);
+}
+
+.messageOutgoing {
+  align-self: flex-end;
+  background: #dcf8c6;
+  color: var(--gd-text-primary);
+}
+
+.messageSystem {
+  align-self: center;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--gd-text-secondary);
+  font-size: 0.75rem;
+  padding: var(--gd-space-1) var(--gd-space-3);
+  border-radius: var(--gd-radius-full);
+}
+
+.inputArea {
+  padding: var(--gd-space-3) var(--gd-space-4);
+  background: var(--gd-card-bg);
+  border-top: 1px solid var(--gd-border);
+  display: flex;
+  align-items: center;
+  gap: var(--gd-space-2);
+  flex-shrink: 0;
+}
+
+.inputField {
+  flex: 1;
+  padding: var(--gd-space-2) var(--gd-space-3);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-full);
+  background: var(--gd-bg);
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--gd-transition-fast);
+}
+
+.inputField:focus {
+  border-color: var(--gd-brand-primary);
+}
+
+.emptyViewport {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--gd-text-muted);
+  gap: var(--gd-space-4);
+  padding: var(--gd-space-6);
+  text-align: center;
+}
+
+/* ─── Column Right: Sidebar (Orders or Alerts) ────────────────────────────── */
+.ordersSidebar,
+.rightSidebar {
+  border-left: 2px solid var(--gd-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--gd-bg);
+}
+
+.rightSidebarHeader {
+  padding: var(--gd-space-3) var(--gd-space-4);
+  border-bottom: 1px solid var(--gd-border);
+  background: var(--gd-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gd-space-2);
+  flex-shrink: 0;
+}
+
+.rightSidebarContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--gd-space-3);
+}
+
+.sidebarHeader {
+  padding: var(--gd-space-3) var(--gd-space-4);
+  border-bottom: 1px solid var(--gd-border);
+  background: var(--gd-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gd-space-2);
+  flex-shrink: 0;
+}
+
+.sidebarScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--gd-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gd-space-3);
+}
+
+.orderCard {
+  background: var(--gd-surface);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-md);
+  padding: var(--gd-space-3);
+  transition: box-shadow var(--gd-transition-fast);
+}
+
+.orderCard:hover {
+  box-shadow: var(--gd-shadow-sm);
+}
+
+.orderCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--gd-space-2);
+}
+
+.orderCardItems {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--gd-space-2);
+}
+
+.orderCardTotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--gd-space-2);
+  border-top: 1px solid var(--gd-border);
+}
+
+.emptyOrders {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--gd-space-6);
+  text-align: center;
+  color: var(--gd-text-muted);
+}
+
+/* ─── Connection Banner ───────────────────────────────────────────────────── */
+.connectionBanner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--gd-space-4);
+  padding: var(--gd-space-6);
+  text-align: center;
+}
+
+.qrContainer {
+  padding: var(--gd-space-4);
+  background: white;
+  border-radius: var(--gd-radius-lg);
+  box-shadow: var(--gd-shadow-md);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .container {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    height: auto;
+  }
+
+  .chatList {
+    max-height: 200px;
+    border-right: none;
+    border-bottom: 1px solid var(--gd-border);
+  }
+
+  .ordersSidebar {
+    display: none;
+  }
+}

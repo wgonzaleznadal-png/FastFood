@@ -1,0 +1,38 @@
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gd-space-4);
+  flex-wrap: wrap;
+}
+
+.submoduleCard {
+  display: flex;
+  flex-direction: column;
+  padding: var(--gd-space-5);
+  background: var(--gd-surface);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-lg);
+  box-shadow: var(--gd-shadow-sm);
+  text-decoration: none;
+  color: var(--gd-text-primary);
+  transition: box-shadow var(--gd-transition-fast), transform var(--gd-transition-fast), border-color var(--gd-transition-fast);
+  cursor: pointer;
+}
+
+.submoduleCard:hover {
+  box-shadow: var(--gd-shadow-md);
+  transform: translateY(-2px);
+  border-color: var(--gd-brand-primary);
+}
+
+.adminNote {
+  display: flex;
+  align-items: center;
+  margin-top: var(--gd-space-8);
+  padding: var(--gd-space-3) var(--gd-space-4);
+  background: var(--gd-bg);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius-md);
+  width: fit-content;
+}
