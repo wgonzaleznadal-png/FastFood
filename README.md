@@ -53,12 +53,47 @@ npm run dev           # App en http://localhost:3000
 
 Cada tabla tiene `tenantId`. El backend valida en cada request que el usuario solo acceda a datos de su propio tenant. **La seguridad no se negocia.**
 
-## Módulos (Roadmap)
+## Módulos Implementados
 
-- [x] **Fase 0** — Cimientos (este sprint)
-- [ ] **Fase 1** — Gestión de pedidos
-- [ ] **Fase 2** — Menú y productos
-- [ ] **Fase 3** — Mesas y reservas
-- [ ] **Fase 4** — Reportes y analytics
-- [ ] **Fase 5** — Multi-módulo (Lego)
-# GastroDash2.0
+- [x] **Auth** — Autenticación JWT con roles
+- [x] **Caja** — Sistema de turnos y punto de venta
+- [x] **Pedidos** — Gestión unificada (UNIT/KG/PORTION)
+- [x] **Menú** — Productos y categorías
+- [x] **Cocina** — Vista de comandas
+- [x] **Delivery** — Asignación de cadetes y geolocalización
+- [x] **Finanzas** — Reportes y consolidación
+- [x] **Clientes** — CRM y fidelización
+- [x] **WhatsApp** — Bot con IA para pedidos automatizados
+- [x] **Egresos** — Gestión de gastos (caja chica, estructurales, insumos)
+
+## 🚀 Deployment
+
+Este proyecto está listo para deployment en:
+- **Frontend**: Vercel
+- **Backend**: Railway
+- **Database**: Railway PostgreSQL
+
+Ver [DEPLOYMENT.md](./DEPLOYMENT.md) para instrucciones detalladas.
+
+### Quick Deploy
+
+**Backend (Railway):**
+1. Conecta este repo en Railway
+2. Configura Root Directory: `backend`
+3. Agrega PostgreSQL
+4. Configura variables de entorno (ver DEPLOYMENT.md)
+
+**Frontend (Vercel):**
+1. Importa este repo en Vercel
+2. Configura Root Directory: `frontend`
+3. Agrega `NEXT_PUBLIC_API_URL` con la URL de Railway
+
+## 📊 Estado del Proyecto
+
+- ✅ Build exitoso (Backend + Frontend)
+- ✅ TypeScript sin errores
+- ✅ Base de datos optimizada (15 modelos)
+- ✅ 10 módulos backend implementados
+- ✅ 15 páginas frontend
+- ✅ Integración WhatsApp + OpenAI
+- ✅ Sistema multitenant completo
