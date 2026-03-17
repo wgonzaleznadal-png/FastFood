@@ -35,7 +35,9 @@ function getAuthDir(tenantId: string) {
 }
 
 function log(tenantId: string, msg: string) {
-  console.log(`[WA:${tenantId}] ${msg}`);
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[WA:${tenantId}] ${msg}`);
+  }
 }
 
 // ─── CONEXIÓN PRINCIPAL (NO BLOQUEANTE) ──────────────────────────────────────
@@ -68,7 +70,7 @@ export async function connectWhatsApp(tenantId: string, phoneNumber?: string): P
 }
 
 async function _startSocket(tenantId: string, phoneNumber?: string) {
-  console.log(`[WA:${tenantId}] 🚀 _startSocket iniciado`);
+  log(tenantId, "🚀 _startSocket iniciado");
   const authDir = getAuthDir(tenantId);
   if (process.env.NODE_ENV === "development") {
     console.log(`[WA:${tenantId}] Auth dir: ${authDir}`);

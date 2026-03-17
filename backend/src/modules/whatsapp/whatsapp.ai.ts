@@ -142,16 +142,15 @@ async function executeConfirmWaOrder(
     }
   });
 
-  // 3. Validar productos (Tus logs de oro intactos)
   const productIds = data.items.map((i) => i.productId);
-  console.log("[WhatsApp AI] 🔍 Validando productos:", productIds);
   const products = await prisma.product.findMany({
     where: { id: { in: productIds }, tenantId, unitType: 'KG', isAvailable: true, isAvailableForBot: true },
   });
-  console.log("[WhatsApp AI] ✅ Productos encontrados:", products.map(p => ({ id: p.id, name: p.name })));
 
   if (products.length !== productIds.length) {
-    console.log(`[WhatsApp AI] ❌ Validación falló: esperaba ${productIds.length}, encontró ${products.length}`);
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[WhatsApp AI] Validation failed: expected ${productIds.length}, found ${products.length}`);
+    }
     return JSON.stringify({ success: false, error: "Uno o más productos no están disponibles." });
   }
 
@@ -165,7 +164,6 @@ async function executeConfirmWaOrder(
     const pricePerKg = Number(product.pricePerKg!);
     const subtotal = Math.round(pricePerKg * item.weightKg * 100) / 100;
     totalPrice += subtotal;
-    console.log(`[WhatsApp AI] 💰 Item: ${product.name} | ${item.weightKg}kg x ${pricePerKg}/kg = $${subtotal.toFixed(2)}`);
     return {
       productId: item.productId,
       unitType: 'KG' as const,
@@ -180,8 +178,6 @@ async function executeConfirmWaOrder(
   try {
     if (existingOrder) {
       // 🔄 5. RAMA DE ACTUALIZACIÓN: El cliente cambió de opinión
-      console.log(`[WhatsApp AI] 🔄 ACTUALIZANDO PEDIDO EXISTENTE #${existingOrder.orderNumber}`);
-      
       // Limpiamos los items viejos antes de poner los nuevos
       await prisma.orderItem.deleteMany({ where: { orderId: existingOrder.id } });
       
@@ -197,7 +193,7 @@ async function executeConfirmWaOrder(
           items: { create: itemsData },
         },
       });
-      console.log("[WhatsApp AI] ✅ PEDIDO ACTUALIZADO EXITOSAMENTE:", order.id, "- Order #", order.orderNumber);
+      if (process.env.NODE_ENV === "development") console.log("[WhatsApp AI] Order updated:", order.id);
 
     } else {
       // 🆕 6. RAMA DE CREACIÓN (Tu lógica original)
@@ -208,7 +204,6 @@ async function executeConfirmWaOrder(
       });
       const nextOrderNumber = (lastOrder?.orderNumber ?? 0) + 1;
 
-      console.log("[WhatsApp AI] ===== CREANDO PEDIDO NUEVO =====");
       order = await prisma.order.create({
         data: {
           tenantId,
@@ -227,11 +222,11 @@ async function executeConfirmWaOrder(
           items: { create: itemsData },
         },
       });
-      console.log("[WhatsApp AI] ✅ PEDIDO CREADO EXITOSAMENTE:", order.id, "- Order #", order.orderNumber);
+      if (process.env.NODE_ENV === "development") console.log("[WhatsApp AI] Order created:", order.id);
     }
   } catch (err: any) {
-    console.error("[WhatsApp AI] ❌ ERROR EN DB:", err.message);
-    return JSON.stringify({ success: false, error: `Error en base de datos: ${err.message}` });
+    console.error("[WhatsApp AI] DB error:", err.message);
+    return JSON.stringify({ success: false, error: "Error en base de datos" });
   }
 
   // 7. Finalizar (Tu lógica original)

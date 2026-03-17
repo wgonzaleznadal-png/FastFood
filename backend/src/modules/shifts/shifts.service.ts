@@ -33,7 +33,7 @@ export async function closeShift(
   input: CloseShiftInput,
   role: string
 ) {
-  console.log("[closeShift] Starting close for shift:", shiftId);
+  if (process.env.NODE_ENV === "development") console.log("[closeShift] Starting close for shift:", shiftId);
 
   const shift = await prisma.shift.findFirst({
     where: { id: shiftId, tenantId, status: "OPEN" },
@@ -94,7 +94,6 @@ export async function closeShift(
   });
 
   logAudit({ tenantId, userId, action: "SHIFT_CLOSED", entity: "shift", entityId: shiftId });
-  console.log("[closeShift] Shift closed OK");
   return serializeShiftForJson(updated as Record<string, unknown>);
 }
 
