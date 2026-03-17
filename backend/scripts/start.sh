@@ -12,5 +12,24 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
-npx prisma migrate deploy
+# Deploy migrations; if P3005 (schema not empty), baseline existing DB
+set +e
+migrate_out=$(npx prisma migrate deploy 2>&1)
+migrate_exit=$?
+set -e
+echo "$migrate_out"
+if [ "$migrate_exit" -ne 0 ]; then
+  if echo "$migrate_out" | grep -q "P3005"; then
+    echo "Database has existing schema. Baselining migrations..."
+    for dir in prisma/migrations/*/; do
+      [ -d "$dir" ] || continue
+      name=$(basename "$dir")
+      npx prisma migrate resolve --applied "$name" 2>/dev/null || true
+    done
+    npx prisma migrate deploy
+  else
+    exit 1
+  fi
+fi
+
 exec node dist/server.js
