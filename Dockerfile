@@ -6,7 +6,10 @@ WORKDIR /app
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci
 
+COPY backend/prisma.config.ts ./
 COPY backend/prisma ./prisma/
+# Dummy DATABASE_URL for generate (doesn't connect); real URL at runtime for migrate
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 RUN npx prisma generate
 
 COPY backend/tsconfig.json ./
@@ -21,6 +24,7 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/prisma ./prisma/
 
 ENV NODE_ENV=production
