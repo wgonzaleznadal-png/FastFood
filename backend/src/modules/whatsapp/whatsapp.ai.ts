@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
+import { sanitizeName } from "@/lib/sanitize";
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -12,9 +13,30 @@ function getOpenAI(): OpenAI {
   return _openai;
 }
 
+// ─── SANITIZE USER INPUT (prompt injection protection) ────────────────────────
+function sanitizeUserInput(text: string): string {
+  let sanitized = text.replace(/[\x00-\x1F\x7F]/g, "");
+  if (sanitized.length > 1000) sanitized = sanitized.substring(0, 1000);
+  const dangerousPatterns = [
+    /ignore\s+(all\s+)?(previous|prior)\s+instructions/i,
+    /system\s*:/i,
+    /you\s+are\s+now/i,
+    /forget\s+everything/i,
+    /disregard\s+(all\s+)?(previous|prior)/i,
+    /new\s+instructions\s*:/i,
+    /act\s+as\s+if/i,
+  ];
+  for (const p of dangerousPatterns) {
+    if (p.test(sanitized)) return "[Mensaje bloqueado por seguridad]";
+  }
+  return sanitized;
+}
+
 // ─── CONVERSATION HISTORY (in-memory per jid, capped) ────────────────────────
 const conversationHistory = new Map<string, Array<{ role: "user" | "assistant" | "system"; content: string }>>();
+const conversationLastAccess = new Map<string, number>();
 const MAX_HISTORY = 20;
+const HISTORY_TTL_MS = 60 * 60 * 1000; // 1 hora
 
 function getHistory(tenantId: string, jid: string) {
   const key = `${tenantId}:${jid}`;
@@ -23,10 +45,23 @@ function getHistory(tenantId: string, jid: string) {
 }
 
 function addToHistory(tenantId: string, jid: string, role: "user" | "assistant", content: string) {
+  const key = `${tenantId}:${jid}`;
+  conversationLastAccess.set(key, Date.now());
   const history = getHistory(tenantId, jid);
   history.push({ role, content });
   if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
 }
+
+function cleanupStaleHistory() {
+  const now = Date.now();
+  for (const [key, lastAccess] of conversationLastAccess.entries()) {
+    if (now - lastAccess > HISTORY_TTL_MS) {
+      conversationHistory.delete(key);
+      conversationLastAccess.delete(key);
+    }
+  }
+}
+setInterval(cleanupStaleHistory, HISTORY_TTL_MS);
 
 // ─── FORMAT CURRENCY ──────────────────────────────────────────────────────────
 function fmt(n: number): string {
@@ -120,6 +155,7 @@ async function executeConfirmWaOrder(
   }
 ): Promise<string> {
   const deliveryPhone = jid.split('@')[0];
+  const customerName = sanitizeName(data.customerName);
   
   // 1. Buscar turno abierto (Tu lógica original)
   const openShift = await prisma.shift.findFirst({
@@ -184,7 +220,7 @@ async function executeConfirmWaOrder(
       order = await prisma.order.update({
         where: { id: existingOrder.id },
         data: {
-          customerName: data.customerName,
+          customerName,
           isDelivery: data.isDelivery,
           // Lógica "Mozo Estrella": Si retira, dirección va a null
           deliveryAddress: data.isDelivery ? data.deliveryAddress : null,
@@ -209,7 +245,7 @@ async function executeConfirmWaOrder(
           tenantId,
           shiftId: openShift.id,
           orderNumber: nextOrderNumber,
-          customerName: data.customerName,
+          customerName,
           isDelivery: data.isDelivery,
           deliveryAddress: data.isDelivery ? data.deliveryAddress : null,
           deliveryPhone,
@@ -325,8 +361,9 @@ ${menuTexto}
     },
   ];
 
+  const sanitizedText = sanitizeUserInput(text);
   const history = getHistory(tenantId, jid);
-  addToHistory(tenantId, jid, "user", text);
+  addToHistory(tenantId, jid, "user", sanitizedText);
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },

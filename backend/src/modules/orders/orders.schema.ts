@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sanitizeName } from '../../lib/sanitize';
 
 // ─── SCHEMAS PARA ORDER UNIFICADO ────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ export const updateCoordsSchema = z.object({
 
 export const createOrderInputSchema = z.object({
   shiftId: z.string().min(1),
-  customerName: z.string().min(1).max(100),
+  customerName: z.string().min(1).max(100).transform(sanitizeName),
   isDelivery: z.boolean().default(false),
   deliveryAddress: z.string().max(500).optional(),
   deliveryPhone: z.string().max(30).optional(),
@@ -88,7 +89,7 @@ export const createOrderInputSchema = z.object({
 });
 
 export const updateOrderInputSchema = z.object({
-  customerName: z.string().min(1).max(100).optional(),
+  customerName: z.string().min(1).max(100).optional().transform((v) => v ? sanitizeName(v) : v),
   isDelivery: z.boolean().optional(),
   deliveryAddress: z.string().max(500).optional(),
   deliveryPhone: z.string().max(30).optional(),

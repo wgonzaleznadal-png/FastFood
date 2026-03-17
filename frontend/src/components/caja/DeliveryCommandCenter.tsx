@@ -72,7 +72,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh, canA
 
   const fetchCadetes = useCallback(async () => {
     try {
-      const res = await api.get("/api/shifts/cadetes/list");
+      const res = await api.get("/shifts/cadetes/list");
       setCadetes(res.data);
     } catch {
       /* silent */
@@ -106,7 +106,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh, canA
     if (!newCadeteName.trim()) return;
     setCreatingCadete(true);
     try {
-      await api.post("/api/shifts/cadetes", {
+      await api.post("/shifts/cadetes", {
         name: newCadeteName.trim(),
         phone: newCadetePhone.trim() || undefined,
       });
@@ -124,7 +124,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh, canA
 
   const handleAssignCadete = async (orderId: string, cadeteId: string) => {
     try {
-      await api.patch(`/api/shifts/orders/${orderId}/assign-cadete`, { cadeteId });
+      await api.patch(`/shifts/orders/${orderId}/assign-cadete`, { cadeteId });
       notifications.show({ title: "Cadete asignado", message: "Pedido en camino", color: "blue" });
       onRefresh(); // Le avisa al padre que se asignó un pedido para que recargue la lista
     } catch (err) {
@@ -137,7 +137,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh, canA
     setRendicionDrawerOpen(true);
     setLoadingSummary(true);
     try {
-      const res = await api.get(`/api/shifts/${shiftId}/cadete/${cadete.id}/summary`);
+      const res = await api.get(`/shifts/${shiftId}/cadete/${cadete.id}/summary`);
       setCadeteSummary(res.data);
     } catch (err) {
       showApiError(err, "Error al cargar resumen");
@@ -148,7 +148,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh, canA
 
   const handleRenderOrder = async (orderId: string, amount: number) => {
     try {
-      await api.patch(`/api/shifts/orders/${orderId}/render`, { cadetePaidAmount: amount });
+      await api.patch(`/shifts/orders/${orderId}/render`, { cadetePaidAmount: amount });
       notifications.show({ title: "Pedido rendido", message: fmt(amount), color: "green" });
       onRefresh(); // Le avisa al padre que un pedido se rindió
       if (selectedCadete) {
@@ -317,7 +317,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh, canA
                         leftSection={<IconCheck size={12} />}
                         onClick={async () => {
                           try {
-                            await api.patch(`/api/orders/${order.id}/status`, { status: "DELIVERED" });
+                            await api.patch(`/orders/${order.id}/status`, { status: "DELIVERED" });
                             notifications.show({ title: "Completado", message: `Pedido #${order.orderNumber} entregado al moto`, color: "green" });
                             onRefresh();
                           } catch (err) {
@@ -505,7 +505,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh, canA
                                 leftSection={<IconCheck size={12} />}
                                 onClick={async () => {
                                   try {
-                                    await api.patch(`/api/shifts/orders/${order.id}/render`, { cadetePaidAmount: 0 });
+                                    await api.patch(`/shifts/orders/${order.id}/render`, { cadetePaidAmount: 0 });
                                     notifications.show({ title: "Pedido entregado", message: "Marcado como entregado", color: "green" });
                                     onRefresh();
                                     if (selectedCadete) {

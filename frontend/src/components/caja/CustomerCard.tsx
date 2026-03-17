@@ -29,7 +29,7 @@ export default function CustomerCard({ customer, isDelivery, onAutoFill }: Custo
     if (!customer?.id) return;
     const load = async () => {
       try {
-        const res = await api.get(`/api/customers/phone/${encodeURIComponent(customer.phone)}`);
+        const res = await api.get(`/customers/phone/${encodeURIComponent(customer.phone)}`);
         setInsights(res.data?.insights || null);
       } catch {
         setInsights(null);

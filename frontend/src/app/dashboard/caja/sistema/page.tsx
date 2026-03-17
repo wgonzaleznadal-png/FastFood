@@ -131,7 +131,7 @@ export default function SistemaCajaPage() {
     if (!activeShift) return;
     setLoading(true);
     try {
-      const res = await api.get(`/api/shifts/${activeShift.id}/summary`);
+      const res = await api.get(`/shifts/${activeShift.id}/summary`);
       const data = res.data;
 
       const cashLocal = Number(data.cashSalesLocal || 0);
@@ -175,7 +175,7 @@ export default function SistemaCajaPage() {
     }
     setSavingEgreso(true);
     try {
-      await api.post("/api/shifts/expenses", {
+      await api.post("/shifts/expenses", {
         shiftId: activeShift.id,
         amount: Number(egresoAmount),
         description: egresoDescription.trim(),
@@ -196,7 +196,7 @@ export default function SistemaCajaPage() {
 
   const handleDeleteExpense = async (expenseId: string) => {
     try {
-      await api.delete(`/api/shifts/expenses/${expenseId}`);
+      await api.delete(`/shifts/expenses/${expenseId}`);
       notifications.show({ title: "Egreso eliminado", message: "El egreso fue eliminado", color: "blue" });
       fetchSummary();
     } catch (err) {
@@ -215,7 +215,7 @@ export default function SistemaCajaPage() {
 
     setClosing(true);
     try {
-      const res = await api.post(`/api/shifts/${activeShift.id}/close`, {
+      const res = await api.post(`/shifts/${activeShift.id}/close`, {
         finalCash: totalBilletes,
         notes: billNotes ? `Billetes: ${billNotes}` : undefined,
         billCounts,

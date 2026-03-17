@@ -48,8 +48,8 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterForm) => {
     setError(null);
     try {
-      const res = await api.post("/api/auth/register", data);
-      setAuth(res.data.token, res.data.user, res.data.tenant, res.data.refreshToken);
+      const res = await api.post("/auth/register", data);
+      setAuth(res.data.user, res.data.tenant);
       router.push("/dashboard");
     } catch (err) {
       setError(getApiErrorMessage(err, "Error al registrar. Intentá de nuevo."));

@@ -39,7 +39,7 @@ export default function PedidosKgPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await api.get("/api/products?section=KILO");
+      const res = await api.get("/products?section=KILO");
       setProducts(res.data);
     } catch (err) {
       showApiError(err, "No se pudieron cargar los productos");
@@ -84,10 +84,10 @@ export default function PedidosKgPage() {
         unitType: "KG",
       };
       if (editingProduct) {
-        await api.put(`/api/products/${editingProduct.id}`, payload);
+        await api.put(`/products/${editingProduct.id}`, payload);
         notifications.show({ title: "Producto actualizado", message: formName, color: "green" });
       } else {
-        await api.post("/api/products", payload);
+        await api.post("/products", payload);
         notifications.show({ title: "Producto creado", message: formName, color: "green" });
       }
       setDrawerOpen(false);
@@ -104,7 +104,7 @@ export default function PedidosKgPage() {
     if (!confirm(`¿Eliminar "${editingProduct.name}"?`)) return;
     setSaving(true);
     try {
-      await api.delete(`/api/products/${editingProduct.id}`);
+      await api.delete(`/products/${editingProduct.id}`);
       notifications.show({ title: "Producto eliminado", message: editingProduct.name, color: "gray" });
       setDrawerOpen(false);
       fetchProducts();

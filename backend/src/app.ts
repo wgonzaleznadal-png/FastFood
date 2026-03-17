@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
+import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { errorHandler } from "@/middleware/errorHandler";
 import authRouter from "@/modules/auth/auth.router";
@@ -26,14 +28,12 @@ const corsOptions = {
       return callback(new Error("Origin header required"));
     }
     
-    // En desarrollo, permitir localhost y red local (192.168.x.x, 10.x.x.x)
+    const allowedOriginsDev = ["http://localhost:3000", "http://127.0.0.1:3000"];
     if (process.env.NODE_ENV === "development") {
-      if (
-        origin.includes("localhost") ||
-        origin.includes("127.0.0.1") ||
-        /https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(origin)
-      ) {
-        return callback(null, true);
+      if (allowedOriginsDev.includes(origin)) return callback(null, true);
+      if (process.env.ALLOWED_ORIGINS_DEV) {
+        const extra = process.env.ALLOWED_ORIGINS_DEV.split(",").map((o) => o.trim());
+        if (extra.includes(origin)) return callback(null, true);
       }
     }
     
@@ -54,6 +54,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use(compression());
+app.use(cookieParser());
 app.use(express.json({ limit: "50kb" }));
 
 // Log API requests in development
@@ -80,7 +82,7 @@ const authLimiter = rateLimit({
 
 const limiter = rateLimit({ 
   windowMs: 15 * 60 * 1000, 
-  max: process.env.NODE_ENV === "development" ? 10000 : 200 // Mucho más permisivo en dev
+  max: process.env.NODE_ENV === "development" ? 500 : 200
 });
 app.use(limiter);
 
@@ -97,19 +99,19 @@ app.get("/health/db", async (_req, res) => {
   }
 });
 
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/register", authLimiter);
-app.use("/api/auth/refresh", authLimiter);
-app.use("/api/auth", authRouter);
-app.use("/api/shifts", shiftsRouter);
-app.use("/api/finance", financeRouter);
-app.use("/api/config", configRouter);
-app.use("/api/menu", menuRouter);
-app.use("/api/products", productsRouter);
-app.use("/api/whatsapp", whatsappRouter);
-app.use("/api/customers", customersRouter);
-app.use("/api/orders", ordersRouter);
-app.use("/api/expenses", expensesRouter);
+app.use("/api/v1/auth/login", authLimiter);
+app.use("/api/v1/auth/register", authLimiter);
+app.use("/api/v1/auth/refresh", authLimiter);
+app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/shifts", shiftsRouter);
+app.use("/api/v1/finance", financeRouter);
+app.use("/api/v1/config", configRouter);
+app.use("/api/v1/menu", menuRouter);
+app.use("/api/v1/products", productsRouter);
+app.use("/api/v1/whatsapp", whatsappRouter);
+app.use("/api/v1/customers", customersRouter);
+app.use("/api/v1/orders", ordersRouter);
+app.use("/api/v1/expenses", expensesRouter);
 
 app.use(errorHandler);
 

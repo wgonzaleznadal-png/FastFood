@@ -3,12 +3,31 @@ import { loginSchema, registerTenantSchema } from "./auth.schema";
 import { login, registerTenant, refreshAccessToken, revokeRefreshToken } from "./auth.service";
 
 const router = Router();
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict" as const,
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: "/",
+};
+const TOKEN_COOKIE_OPTS = { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 };
+
+function setAuthCookies(res: Response, token: string, refreshToken: string) {
+  res.cookie("gastrodash_token", token, TOKEN_COOKIE_OPTS);
+  res.cookie("gastrodash_refresh", refreshToken, COOKIE_OPTS);
+}
+
+function clearAuthCookies(res: Response) {
+  res.clearCookie("gastrodash_token", { path: "/" });
+  res.clearCookie("gastrodash_refresh", { path: "/" });
+}
 
 router.post("/register", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const input = registerTenantSchema.parse(req.body);
     const result = await registerTenant(input);
-    res.status(201).json(result);
+    setAuthCookies(res, result.token, result.refreshToken);
+    res.status(201).json({ tenant: result.tenant, user: result.user });
   } catch (err) {
     next(err);
   }
@@ -18,7 +37,8 @@ router.post("/login", async (req: Request, res: Response, next: NextFunction) =>
   try {
     const input = loginSchema.parse(req.body);
     const result = await login(input);
-    res.json(result);
+    setAuthCookies(res, result.token, result.refreshToken);
+    res.json({ tenant: result.tenant, user: result.user });
   } catch (err: unknown) {
     const e = err as { statusCode?: number; name?: string };
     if (e?.statusCode && e.statusCode !== 500) {
@@ -36,13 +56,14 @@ router.post("/login", async (req: Request, res: Response, next: NextFunction) =>
 
 router.post("/refresh", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.gastrodash_refresh ?? req.body?.refreshToken;
     if (!refreshToken) {
       res.status(400).json({ error: "Refresh token requerido" });
       return;
     }
     const result = await refreshAccessToken(refreshToken);
-    res.json(result);
+    setAuthCookies(res, result.token, result.refreshToken);
+    res.json({ tenant: result.tenant, user: result.user });
   } catch (err) {
     next(err);
   }
@@ -50,10 +71,11 @@ router.post("/refresh", async (req: Request, res: Response, next: NextFunction) 
 
 router.post("/logout", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.gastrodash_refresh ?? req.body?.refreshToken;
     if (refreshToken) {
       await revokeRefreshToken(refreshToken);
     }
+    clearAuthCookies(res);
     res.json({ success: true });
   } catch (err) {
     next(err);

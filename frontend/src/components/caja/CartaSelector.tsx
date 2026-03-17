@@ -45,7 +45,7 @@ export default function CartaSelector({ opened, onClose, onAddItems }: CartaSele
   const fetchItems = async () => {
     setLoading(true);
     try {
-      const response = await api.get(`/api/products?section=CARTA&destination=${activeTab}`);
+      const response = await api.get(`/products?section=CARTA&destination=${activeTab}`);
       setItems(response.data.filter((item: CartaProduct) => item.isAvailable));
     } catch (error) {
       showApiError(error);

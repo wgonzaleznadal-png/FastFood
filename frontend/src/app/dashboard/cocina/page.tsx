@@ -55,8 +55,8 @@ export default function CocinaPage() {
     try {
       const station = activeTab === "KITCHEN" ? "COCINA" : "BARRA";
       const [statsRes, listRes] = await Promise.all([
-        api.get(`/api/orders/kitchen/stats`),
-        api.get(`/api/orders/kitchen/list?station=${station}`)
+        api.get(`/orders/kitchen/stats`),
+        api.get(`/orders/kitchen/list?station=${station}`)
       ]);
       setStats(statsRes.data.stats);
       setProductKilos(statsRes.data.productKilos);
@@ -76,7 +76,7 @@ export default function CocinaPage() {
 
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     try {
-      await api.patch(`/api/orders/${orderId}/status`, { status: newStatus });
+      await api.patch(`/orders/${orderId}/status`, { status: newStatus });
       notifications.show({
         title: "Comanda actualizada",
         message: newStatus === "IN_PROGRESS" ? "El pedido pasó a preparación" : "El pedido está listo",

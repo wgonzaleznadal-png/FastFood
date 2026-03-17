@@ -1,16 +1,17 @@
 import { z } from 'zod';
+import { sanitizeName } from '@/lib/sanitize';
 
 // ─── SCHEMAS DE VALIDACIÓN ───────────────────────────────────────────────────
 
 export const createCustomerSchema = z.object({
   phone: z.string().min(8, 'Teléfono debe tener al menos 8 dígitos'),
-  name: z.string().optional(),
+  name: z.string().optional().transform((v) => (v ? sanitizeName(v) : v)),
   email: z.string().email('Email inválido').optional(),
   notes: z.string().optional(),
 });
 
 export const updateCustomerSchema = z.object({
-  name: z.string().optional(),
+  name: z.string().optional().transform((v) => (v ? sanitizeName(v) : v)),
   email: z.string().email('Email inválido').optional(),
   notes: z.string().optional(),
 });

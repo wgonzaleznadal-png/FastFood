@@ -73,7 +73,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [addingCollab, setAddingCollab] = useState(false);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // Ignore errors - clear local state anyway
+    }
     clearAuth();
     clearPermissions();
     router.push("/login");
@@ -109,7 +114,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const fetchShiftSummary = async () => {
     if (!activeShift) return;
     try {
-      const res = await api.get(`/api/shifts/${activeShift.id}/summary`);
+      const res = await api.get(`/shifts/${activeShift.id}/summary`);
       setShiftSummary(res.data);
     } catch (err) {
       console.error("Error fetching shift summary:", err);
@@ -118,7 +123,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const fetchTenantUsers = async () => {
     try {
-      const res = await api.get("/api/config/users");
+      const res = await api.get("/config/users");
       setTenantUsers(res.data);
     } catch { /* silent */ }
   };
@@ -127,8 +132,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!activeShift || !selectedUserId) return;
     setAddingCollab(true);
     try {
-      await api.post(`/api/shifts/${activeShift.id}/collaborators`, { userId: selectedUserId });
-      const res = await api.get("/api/shifts/me");
+      await api.post(`/shifts/${activeShift.id}/collaborators`, { userId: selectedUserId });
+      const res = await api.get("/shifts/me");
       setActiveShift(res.data);
       setSelectedUserId(null);
     } catch (err) {
@@ -141,8 +146,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleRemoveCollaborator = async (userId: string) => {
     if (!activeShift) return;
     try {
-      await api.delete(`/api/shifts/${activeShift.id}/collaborators/${userId}`);
-      const res = await api.get("/api/shifts/me");
+      await api.delete(`/shifts/${activeShift.id}/collaborators/${userId}`);
+      const res = await api.get("/shifts/me");
       setActiveShift(res.data);
     } catch (err) {
       console.error("Error removing collaborator:", err);

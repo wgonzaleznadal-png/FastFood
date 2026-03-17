@@ -42,12 +42,12 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     setError(null);
     try {
-      const res = await api.post("/api/auth/login", {
+      const res = await api.post("/auth/login", {
         tenantSlug: data.tenantSlug,
         email: data.email.trim(),
         password: data.password,
       });
-      setAuth(res.data.token, res.data.user, res.data.tenant, res.data.refreshToken);
+      setAuth(res.data.user, res.data.tenant);
       router.push("/dashboard");
     } catch (err) {
       setError(getApiErrorMessage(err, "Error al iniciar sesión. Verificá tus datos."));

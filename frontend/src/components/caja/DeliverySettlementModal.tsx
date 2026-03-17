@@ -45,7 +45,7 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
 
     setLoading(true);
     try {
-      const res = await api.get(`/api/shifts/${shiftId}/delivery`);
+      const res = await api.get(`/shifts/${shiftId}/delivery`);
       const deliveryOrders = res.data;
       const paidOrders = deliveryOrders.filter((o: any) => o.isPaid);
       const cashOrders = paidOrders.filter((o: any) =>
@@ -98,7 +98,7 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
         payload.deliveryPersonName = deliveryPersonName.trim();
       }
 
-      const res = await api.post(`/api/shifts/${shiftId}/close-delivery`, payload);
+      const res = await api.post(`/shifts/${shiftId}/close-delivery`, payload);
 
       const displayName = useCollaboratorSelect && deliveryPersonUserId
         ? collaborators.find((c) => c.user.id === deliveryPersonUserId)?.user.name ?? deliveryPersonName

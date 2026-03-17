@@ -1,12 +1,13 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
+import { sanitizeName } from "@/lib/sanitize";
 import { authenticate, requireRole } from "@/middleware/tenantGuard";
 import { requireModule } from "@/middleware/moduleGuard";
 import { prisma } from "@/lib/prisma";
 import { createError } from "@/middleware/errorHandler";
 
 const createProductSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100).transform(sanitizeName),
   description: z.string().max(500).optional().nullable(),
   price: z.number().nonnegative(),
   pricePerKg: z.number().nonnegative().optional().nullable(),

@@ -15,14 +15,20 @@ declare global {
   }
 }
 
+const COOKIE_TOKEN = "gastrodash_token";
+
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
+  let token: string | undefined;
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
+  if (header?.startsWith("Bearer ")) {
+    token = header.slice(7);
+  } else if (req.cookies?.[COOKIE_TOKEN]) {
+    token = req.cookies[COOKIE_TOKEN];
+  }
+  if (!token) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-
-  const token = header.slice(7);
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET!, { algorithms: ["HS256"] }) as AuthPayload;
     req.auth = payload;

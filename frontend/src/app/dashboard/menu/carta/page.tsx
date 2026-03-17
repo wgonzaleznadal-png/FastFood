@@ -57,7 +57,7 @@ export default function CartaPage() {
     setLoading(true);
     try {
       // Llamada unificada: "Traeme todo lo que es de CARTA y pertenece a esta Categoría"
-      const response = await api.get(`/api/products?section=CARTA&category=${activeTab}`);
+      const response = await api.get(`/products?section=CARTA&category=${activeTab}`);
       setItems(response.data);
     } catch (error) {
       showApiError(error);
@@ -106,14 +106,14 @@ export default function CartaPage() {
       };
 
       if (editingItem) {
-        await api.put(`/api/products/${editingItem.id}`, payload);
+        await api.put(`/products/${editingItem.id}`, payload);
         notifications.show({
           title: "¡Oído cocina!",
           message: `${values.name} actualizado correctamente.`,
           color: "green",
         });
       } else {
-        await api.post("/api/products", payload);
+        await api.post("/products", payload);
         notifications.show({
           title: "¡Oído cocina!",
           message: `${values.name} sumado a la carta.`,
@@ -130,7 +130,7 @@ export default function CartaPage() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`¿Estás seguro de eliminar "${name}" de la carta?`)) return;
     try {
-      await api.delete(`/api/products/${id}`);
+      await api.delete(`/products/${id}`);
       notifications.show({
         title: "Item eliminado",
         message: `${name} ya no está en la carta.`,
@@ -144,7 +144,7 @@ export default function CartaPage() {
 
   const handleToggleAvailability = async (id: string) => {
     try {
-      await api.patch(`/api/products/${id}/toggle`);
+      await api.patch(`/products/${id}/toggle`);
       fetchItems();
     } catch (error) {
       showApiError(error);

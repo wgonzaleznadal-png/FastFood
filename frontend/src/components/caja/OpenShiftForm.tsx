@@ -35,7 +35,7 @@ export default function OpenShiftForm({ onSuccess, showCancel, onCancel }: OpenS
   const handleSubmit = async (data: OpenShiftFormData) => {
     setSubmitting(true);
     try {
-      const res = await api.post("/api/shifts/open", data);
+      const res = await api.post("/shifts/open", data);
       setActiveShift(res.data);
       notifications.show({ title: "Turno abierto", message: "¡Listo para operar!", color: "green" });
       form.reset();

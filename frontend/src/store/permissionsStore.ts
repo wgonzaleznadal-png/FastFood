@@ -15,7 +15,7 @@ export const usePermissionsStore = create<PermissionsState>((set, get) => ({
 
   fetchPermissions: async () => {
     try {
-      const res = await api.get("/api/config/permissions/me");
+      const res = await api.get("/config/permissions/me");
       set({ permissions: res.data, isLoaded: true });
     } catch {
       set({ isLoaded: true });

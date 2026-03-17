@@ -52,7 +52,7 @@ export default function ClientesPage() {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/api/customers');
+      const res = await api.get('/customers');
       setCustomers(res.data);
     } catch (err) {
       showApiError(err, 'Error al cargar clientes');
@@ -68,7 +68,7 @@ export default function ClientesPage() {
     }
 
     try {
-      await api.post('/api/customers', formData);
+      await api.post('/customers', formData);
       notifications.show({ title: 'Éxito', message: 'Cliente creado', color: 'green' });
       setCreateModalOpen(false);
       resetForm();
@@ -82,7 +82,7 @@ export default function ClientesPage() {
     if (!editingCustomer) return;
 
     try {
-      await api.patch(`/api/customers/${editingCustomer.id}`, {
+      await api.patch(`/customers/${editingCustomer.id}`, {
         name: formData.name || undefined,
         email: formData.email || undefined,
         notes: formData.notes || undefined,
@@ -100,7 +100,7 @@ export default function ClientesPage() {
     if (!confirm('¿Eliminar este cliente?')) return;
 
     try {
-      await api.delete(`/api/customers/${id}`);
+      await api.delete(`/customers/${id}`);
       notifications.show({ title: 'Éxito', message: 'Cliente eliminado', color: 'green' });
       fetchCustomers();
     } catch (err) {

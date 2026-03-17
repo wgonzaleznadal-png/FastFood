@@ -18,6 +18,22 @@ const pairingCodes = new Map<string, string>();
 const connectionStates = new Map<string, "disconnected" | "connecting" | "open">();
 const retryCounters = new Map<string, number>();
 const MAX_RETRIES = 5;
+const reconnectAttempts = new Map<string, { count: number; lastAttempt: number }>();
+const MAX_RECONNECTS_PER_HOUR = 10;
+
+function canReconnect(tenantId: string): boolean {
+  const now = Date.now();
+  const hourAgo = now - 60 * 60 * 1000;
+  const attempts = reconnectAttempts.get(tenantId);
+  if (!attempts || attempts.lastAttempt < hourAgo) {
+    reconnectAttempts.set(tenantId, { count: 1, lastAttempt: now });
+    return true;
+  }
+  if (attempts.count >= MAX_RECONNECTS_PER_HOUR) return false;
+  attempts.count++;
+  attempts.lastAttempt = now;
+  return true;
+}
 
 const AUTH_BASE = path.resolve(process.cwd(), ".wa-auth");
 
@@ -42,7 +58,6 @@ function log(tenantId: string, msg: string) {
 
 // ─── CONEXIÓN PRINCIPAL (NO BLOQUEANTE) ──────────────────────────────────────
 export async function connectWhatsApp(tenantId: string, phoneNumber?: string): Promise<{ qr?: string; pairingCode?: string; status: string }> {
-  // Si ya existe un socket, devolver estado actual
   if (sockets.has(tenantId)) {
     const state = connectionStates.get(tenantId);
     if (state === "open") return { status: "open" };
@@ -55,6 +70,9 @@ export async function connectWhatsApp(tenantId: string, phoneNumber?: string): P
     }
   }
 
+  if (!canReconnect(tenantId)) {
+    throw createError("Demasiados intentos de conexión. Esperá 1 hora.", 429);
+  }
   log(tenantId, "Iniciando conexión...");
   connectionStates.set(tenantId, "connecting");
   retryCounters.set(tenantId, 0);
@@ -83,7 +101,7 @@ async function _startSocket(tenantId: string, phoneNumber?: string) {
     browser: ["Windows", "Chrome", "20.0.0446"],
     printQRInTerminal: false,
     connectTimeoutMs: 60_000,
-    defaultQueryTimeoutMs: undefined,
+    defaultQueryTimeoutMs: 30_000,
     keepAliveIntervalMs: 10_000,
     generateHighQualityLinkPreview: false,
     syncFullHistory: false,

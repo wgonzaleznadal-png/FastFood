@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sanitizeName } from "@/lib/sanitize";
 
 export const kgProductSchema = z.object({
   name: z.string().min(1),
@@ -24,7 +25,7 @@ export const cartaItemOrderSchema = z.object({
 
 export const createKgOrderSchema = z.object({
   shiftId: z.string(),
-  customerName: z.string().min(1),
+  customerName: z.string().min(1).transform(sanitizeName),
   isDelivery: z.boolean().optional(),
   deliveryAddress: z.string().optional(),
   deliveryPhone: z.string().optional(),
@@ -40,7 +41,7 @@ export const createKgOrderSchema = z.object({
 
 export const updateStatusSchema = z.object({
   status: z.enum(["PENDING", "WEIGHED", "PAID", "DELIVERED", "CANCELLED"]),
-  customerName: z.string().max(100).optional(),
+  customerName: z.string().max(100).optional().transform((v) => (v ? sanitizeName(v) : v)),
   isDelivery: z.boolean().optional(),
   deliveryAddress: z.string().max(500).optional(),
   deliveryPhone: z.string().max(30).optional(),
@@ -51,7 +52,7 @@ export const updateStatusSchema = z.object({
 });
 
 export const sendToKitchenSchema = z.object({
-  customerName: z.string().max(100).optional(),
+  customerName: z.string().max(100).optional().transform((v) => (v ? sanitizeName(v) : v)),
   isDelivery: z.boolean().optional(),
   deliveryAddress: z.string().max(500).optional(),
   deliveryPhone: z.string().max(30).optional(),

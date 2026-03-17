@@ -28,7 +28,7 @@ export default function ProductAvailabilityDrawer({ opened, onClose }: Props) {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/api/menu/kg-products");
+      const res = await api.get("/menu/kg-products");
       setProducts(res.data);
     } catch (err) {
       showApiError(err, "Error al cargar productos");
@@ -47,7 +47,7 @@ export default function ProductAvailabilityDrawer({ opened, onClose }: Props) {
     setUpdating(productId);
     try {
       console.log('[ProductAvailabilityDrawer] Actualizando producto:', { productId, isAvailableForBot: newValue });
-      const response = await api.put(`/api/menu/kg-products/${productId}`, { isAvailableForBot: newValue });
+      const response = await api.put(`/menu/kg-products/${productId}`, { isAvailableForBot: newValue });
       console.log('[ProductAvailabilityDrawer] Respuesta del servidor:', response.data);
       
       // Refetch para asegurar sincronización con DB
@@ -72,7 +72,7 @@ export default function ProductAvailabilityDrawer({ opened, onClose }: Props) {
     setUpdating("all");
     try {
       await Promise.all(
-        products.map(p => api.put(`/api/menu/kg-products/${p.id}`, { isAvailableForBot: newValue }))
+        products.map(p => api.put(`/menu/kg-products/${p.id}`, { isAvailableForBot: newValue }))
       );
       
       // Refetch para asegurar sincronización con DB

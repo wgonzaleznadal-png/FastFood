@@ -27,7 +27,7 @@ interface AuthState {
   tenant: AuthTenant | null;
   isAuthenticated: boolean;
   _hasHydrated: boolean;
-  setAuth: (token: string, user: AuthUser, tenant: AuthTenant, refreshToken?: string) => void;
+  setAuth: (user: AuthUser, tenant: AuthTenant, token?: string, refreshToken?: string) => void;
   clearAuth: () => void;
   setHasHydrated: (state: boolean) => void;
 }
@@ -41,8 +41,8 @@ export const useAuthStore = create<AuthState>()(
       tenant: null,
       isAuthenticated: false,
       _hasHydrated: false,
-      setAuth: (token, user, tenant, refreshToken) =>
-        set({ token, user, tenant, refreshToken: refreshToken ?? null, isAuthenticated: true }),
+      setAuth: (user, tenant, token, refreshToken) =>
+        set({ user, tenant, token: token ?? null, refreshToken: refreshToken ?? null, isAuthenticated: true }),
       clearAuth: () =>
         set({ token: null, refreshToken: null, user: null, tenant: null, isAuthenticated: false }),
       setHasHydrated: (state) => set({ _hasHydrated: state }),
@@ -50,6 +50,7 @@ export const useAuthStore = create<AuthState>()(
     {
       name: "gastrodash-auth",
       storage: createJSONStorage(() => safeStorage),
+      partialize: (s) => ({ user: s.user, tenant: s.tenant }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },

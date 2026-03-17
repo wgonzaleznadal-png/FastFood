@@ -113,7 +113,7 @@ export default function WhatsAppCRM({ mode, shiftId }: Props) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const r = await api.get("/api/whatsapp/status");
+      const r = await api.get("/whatsapp/status");
       setConnStatus(r.data.status || "disconnected");
       setQrCode(r.data.qr || null);
     } catch { /* backend caído — no cambiar estado */ }
@@ -121,14 +121,14 @@ export default function WhatsAppCRM({ mode, shiftId }: Props) {
 
   const fetchSessions = useCallback(async () => {
     try {
-      const r = await api.get("/api/whatsapp/sessions");
+      const r = await api.get("/whatsapp/sessions");
       setSessions(r.data);
     } catch { /* silent */ }
   }, []);
 
   const fetchMessages = useCallback(async (jid: string) => {
     try {
-      const r = await api.get(`/api/whatsapp/messages/${encodeURIComponent(jid)}`);
+      const r = await api.get(`/whatsapp/messages/${encodeURIComponent(jid)}`);
       setMessages(r.data);
       // NO hacer auto-scroll - dejamos que el usuario controle el scroll manualmente
     } catch { /* silent */ }
@@ -188,7 +188,7 @@ export default function WhatsAppCRM({ mode, shiftId }: Props) {
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      const r = await api.post("/api/whatsapp/connect");
+      const r = await api.post("/whatsapp/connect");
       setConnStatus(r.data.status || "connecting");
       setQrCode(r.data.qr || null);
       if (r.data.status === "open") {
@@ -200,7 +200,7 @@ export default function WhatsAppCRM({ mode, shiftId }: Props) {
 
   const handleDisconnect = async () => {
     try {
-      await api.post("/api/whatsapp/disconnect");
+      await api.post("/whatsapp/disconnect");
       setConnStatus("disconnected");
       notifications.show({ title: "WhatsApp", message: "Desconectado", color: "gray" });
     } catch (err) { showApiError(err, "Error al desconectar"); }
@@ -210,7 +210,7 @@ export default function WhatsAppCRM({ mode, shiftId }: Props) {
     if (!selectedJid || !inputText.trim()) return;
     setSending(true);
     try {
-      await api.post("/api/whatsapp/send", { jid: selectedJid, text: inputText.trim() });
+      await api.post("/whatsapp/send", { jid: selectedJid, text: inputText.trim() });
       setInputText("");
       notifications.show({ title: "Enviado", message: "Mensaje enviado. Bot pausado.", color: "blue" });
       fetchSessions();
@@ -223,7 +223,7 @@ export default function WhatsAppCRM({ mode, shiftId }: Props) {
 
   const handleReactivate = async (jid: string) => {
     try {
-      await api.post("/api/whatsapp/reactivate", { jid });
+      await api.post("/whatsapp/reactivate", { jid });
       notifications.show({ title: "Bot reactivado", message: "La IA retomó el control", color: "green" });
       fetchSessions();
     } catch (err) { showApiError(err, "Error al reactivar"); }

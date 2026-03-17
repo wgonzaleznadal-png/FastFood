@@ -47,6 +47,7 @@ interface ConsolidatorData {
       deliverySales: number;
       retiroSales: number;
       totalOrdersCount: number;
+      volumeByProduct?: Record<string, number>;
     };
     charts: {
       salesByMethod: Record<string, number>;
@@ -132,7 +133,7 @@ export default function FinanzasPage() {
     setShiftDetailOpen(true);
     setLoadingDetail(true);
     try {
-      const res = await api.get(`/api/shifts/${shiftId}/summary`);
+      const res = await api.get(`/shifts/${shiftId}/summary`);
       setShiftDetail(res.data);
     } catch (err) {
       showApiError(err, "Error al cargar detalle del turno");
@@ -147,8 +148,8 @@ export default function FinanzasPage() {
     setLoading(true);
     try {
       const [consRes, expRes] = await Promise.all([
-        api.get(`/api/finance/consolidator?period=${period}`),
-        api.get(`/api/finance/expenses?period=${period}`),
+        api.get(`/finance/consolidator?period=${period}`),
+        api.get(`/finance/expenses?period=${period}`),
       ]);
       setConsolidator(consRes.data);
       setExpenses(expRes.data);
@@ -164,7 +165,7 @@ export default function FinanzasPage() {
   const handleCreateExpense = async (data: ExpenseForm) => {
     setSubmitting(true);
     try {
-      await api.post("/api/finance/expenses", { ...data, period });
+      await api.post("/finance/expenses", { ...data, period });
       notifications.show({ title: "Gasto registrado", message: "El gasto fue guardado.", color: "green" });
       setDrawerOpen(false);
       form.reset();
@@ -178,7 +179,7 @@ export default function FinanzasPage() {
 
   const handleMarkPaid = async (id: string) => {
     try {
-      await api.put(`/api/finance/expenses/${id}`, { isPaid: true, paidAt: new Date().toISOString() });
+      await api.put(`/finance/expenses/${id}`, { isPaid: true, paidAt: new Date().toISOString() });
       notifications.show({ title: "Marcado como pagado", message: "", color: "green" });
       fetchData();
     } catch (err) {

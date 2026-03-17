@@ -143,7 +143,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await api.get("/api/products?section=KILO");
+      const res = await api.get("/products?section=KILO");
       setProducts(res.data.filter((p: KgProduct) => p.isAvailable));
     } catch {
       notifications.show({ title: "Error", message: "No se pudieron cargar los productos", color: "red" });
@@ -155,7 +155,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
   // 2. FIX: Apuntamos al endpoint híbrido
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await api.get(`/api/orders?shiftId=${shiftId}`);
+      const res = await api.get(`/orders?shiftId=${shiftId}`);
       setOrders(res.data);
     } catch {
       notifications.show({ title: "Error", message: "No se pudieron cargar los pedidos", color: "red" });
@@ -279,7 +279,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
     if (digits.length >= 3) {
       phoneSearchTimer.current = setTimeout(async () => {
         try {
-          const res = await api.get(`/api/customers/search?q=${encodeURIComponent(value)}`);
+          const res = await api.get(`/customers/search?q=${encodeURIComponent(value)}`);
           setCustomerSuggestions(res.data || []);
           setShowSuggestions((res.data || []).length > 0);
         } catch {
@@ -334,7 +334,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
       // FIX: Si es "kilaje y cobrar", marcar isSentToKitchen=true desde la creación
       const shouldSendToKitchen = action === "charge_weigh";
       
-      const res = await api.post("/api/orders", {
+      const res = await api.post("/orders", {
         shiftId,
         customerName: customerName.trim(),
         isDelivery,
@@ -411,7 +411,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
         payload.status = "DELIVERED";
       }
 
-      const res = await api.patch(`/api/orders/${selectedOrderId}/status`, payload);
+      const res = await api.patch(`/orders/${selectedOrderId}/status`, payload);
       
       notifications.show({ 
         title: "¡Cobro Exitoso!", 
@@ -493,7 +493,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
 
       // RE-IMPRESIÓN: Solo actualizar notas (no tocar items)
       if (reason) {
-        const res = await api.patch(`/api/orders/${editingOrder.id}`, {
+        const res = await api.patch(`/orders/${editingOrder.id}`, {
           notes: auditNote,
           isSentToKitchen: true,
         });
@@ -517,7 +517,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
       }
 
       // ENVÍO NORMAL A KILAJE (primera vez)
-      const res = await api.patch(`/api/orders/${editingOrder.id}`, {
+      const res = await api.patch(`/orders/${editingOrder.id}`, {
         customerName: customerName.trim(),
         isDelivery,
         deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
@@ -585,7 +585,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
     }
     
     try {
-      await api.patch(`/api/orders/${orderToCancel.id}/status`, {
+      await api.patch(`/orders/${orderToCancel.id}/status`, {
         status: "CANCELLED",
         isPaid: false,
         cancellationNote: cancellationNote.trim(),
@@ -1209,7 +1209,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
                     notes: itemNotes[i.productId || ''] || undefined
                   }));
                 
-                const res = await api.patch(`/api/orders/${editingOrder!.id}`, {
+                const res = await api.patch(`/orders/${editingOrder!.id}`, {
                   customerName: customerName.trim(),
                   isDelivery,
                   deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
@@ -1256,7 +1256,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
                             notes: itemNotes[i.productId || ''] || undefined
                           }));
 
-                        const res = await api.patch(`/api/orders/${editingOrder!.id}`, {
+                        const res = await api.patch(`/orders/${editingOrder!.id}`, {
                           customerName: customerName.trim(),
                           isDelivery,
                           deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
@@ -1297,7 +1297,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
                             notes: itemNotes[i.productId || ''] || undefined
                           }));
 
-                        const res = await api.patch(`/api/orders/${editingOrder!.id}`, {
+                        const res = await api.patch(`/orders/${editingOrder!.id}`, {
                           customerName: customerName.trim(),
                           isDelivery,
                           deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
@@ -1371,7 +1371,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
                   leftSection={<IconPrinter size={16} />}
                   onClick={async () => {
                     try {
-                      const res = await api.patch(`/api/orders/${editingOrder!.id}`, {
+                      const res = await api.patch(`/orders/${editingOrder!.id}`, {
                         isSentToKitchen: true,
                       });
                       
@@ -1638,7 +1638,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
             shiftId={shiftId} 
             orders={orders as any} 
             onRefresh={fetchOrders}
-            canAssignAndCollect={canAssignAndCollect}
+            canAssignAndCollect={canAssignAndCollect ?? false}
           />
         </Tabs.Panel>
 

@@ -68,7 +68,7 @@ export default function CajaPage() {
   useEffect(() => {
     const fetchActiveShift = async () => {
       try {
-        const res = await api.get("/api/shifts/me");
+        const res = await api.get("/shifts/me");
         setActiveShift(res.data);
       } catch {
         clearShift();
@@ -82,7 +82,7 @@ export default function CajaPage() {
   const fetchExpenses = async () => {
     if (!activeShift) return;
     try {
-      const res = await api.get(`/api/shifts/${activeShift.id}/expenses`);
+      const res = await api.get(`/shifts/${activeShift.id}/expenses`);
       setExpenses(res.data);
     } catch {
       /* silent */
@@ -97,7 +97,7 @@ export default function CajaPage() {
     if (!activeShift) return;
     setSubmitting(true);
     try {
-      await api.post(`/api/shifts/${activeShift.id}/close`, data);
+      await api.post(`/shifts/${activeShift.id}/close`, data);
       clearShift();
       setCloseDrawerOpen(false);
       notifications.show({ title: "Turno cerrado", message: "El turno fue cerrado correctamente.", color: "blue" });
@@ -116,7 +116,7 @@ export default function CajaPage() {
     }
     setSavingEgreso(true);
     try {
-      await api.post("/api/shifts/expenses", {
+      await api.post("/shifts/expenses", {
         shiftId: activeShift.id,
         amount: Number(egresoAmount),
         description: egresoDescription.trim(),
@@ -137,7 +137,7 @@ export default function CajaPage() {
 
   const handleDeleteExpense = async (id: string) => {
     try {
-      await api.delete(`/api/shifts/expenses/${id}`);
+      await api.delete(`/shifts/expenses/${id}`);
       notifications.show({ title: "Egreso eliminado", message: "", color: "gray" });
       fetchExpenses();
     } catch (err) {

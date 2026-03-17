@@ -101,9 +101,9 @@ export default function ConfiguracionPage() {
     setLoading(true);
     try {
       const [permsRes, usersRes, pinRes] = await Promise.all([
-        api.get("/api/config/permissions"),
-        api.get("/api/config/users"),
-        api.get("/api/config/admin-pin"),
+        api.get("/config/permissions"),
+        api.get("/config/users"),
+        api.get("/config/admin-pin"),
       ]);
       setPermissions(permsRes.data);
       setUsers(usersRes.data);
@@ -126,7 +126,7 @@ export default function ConfiguracionPage() {
     }
     setSavingPin(true);
     try {
-      await api.post("/api/config/admin-pin", { pin: pinValue });
+      await api.post("/config/admin-pin", { pin: pinValue });
       setHasPin(true);
       setPinValue("");
       setPinConfirm("");
@@ -148,7 +148,7 @@ export default function ConfiguracionPage() {
     const key = submoduleKey ?? moduleKey;
     setSaving(key);
     try {
-      await api.patch("/api/config/permissions", { moduleKey, submoduleKey, isEnabled });
+      await api.patch("/config/permissions", { moduleKey, submoduleKey, isEnabled });
       notifications.show({
         title: isEnabled ? "Módulo activado" : "Módulo desactivado",
         message: "",
@@ -170,7 +170,7 @@ export default function ConfiguracionPage() {
     const key = submoduleKey ?? moduleKey;
     setSaving(key);
     try {
-      await api.patch("/api/config/permissions", { moduleKey, submoduleKey, allowedRoles });
+      await api.patch("/config/permissions", { moduleKey, submoduleKey, allowedRoles });
       notifications.show({ title: "Roles actualizados", message: "", color: "green" });
       fetchData();
     } catch {
@@ -183,7 +183,7 @@ export default function ConfiguracionPage() {
   const handleUpdateUserRole = async (userId: string, role: string) => {
     setSaving(userId);
     try {
-      await api.patch(`/api/config/users/${userId}`, { role });
+      await api.patch(`/config/users/${userId}`, { role });
       notifications.show({ title: "Rol actualizado", message: "", color: "green" });
       fetchData();
     } catch (err) {
@@ -196,7 +196,7 @@ export default function ConfiguracionPage() {
   const handleToggleUserActive = async (userId: string, isActive: boolean) => {
     setSaving(userId);
     try {
-      await api.patch(`/api/config/users/${userId}`, { isActive });
+      await api.patch(`/config/users/${userId}`, { isActive });
       notifications.show({
         title: isActive ? "Usuario activado" : "Usuario desactivado",
         message: "",
@@ -213,7 +213,7 @@ export default function ConfiguracionPage() {
   const handleCreateUser = async (data: CreateUserForm) => {
     setCreating(true);
     try {
-      await api.post("/api/config/users", data);
+      await api.post("/config/users", data);
       notifications.show({ title: "Usuario creado", message: `${data.name} puede iniciar sesión con su email`, color: "green" });
       setCreateModalOpen(false);
       createForm.reset();

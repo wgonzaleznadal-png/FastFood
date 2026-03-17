@@ -5,12 +5,13 @@ import { useAuthStore } from "@/store/authStore";
 // Para acceso desde tablet en la misma red: usa el host de la página (ej: 192.168.x.x:4000)
 const getApiBaseUrl = () =>
   typeof window !== "undefined"
-    ? `http://${window.location.hostname}:4000`
-    : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000");
+    ? `http://${window.location.hostname}:4000/api/v1`
+    : `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/v1`;
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000",
+  baseURL: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/v1`,
   headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {
@@ -20,13 +21,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Token sent via httpOnly cookie when withCredentials: true
 
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> = [];
@@ -45,32 +40,23 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     if (error.response?.status === 401 && !originalRequest._retry) {
-      const { refreshToken, clearAuth } = useAuthStore.getState();
-
-      if (!refreshToken) {
-        clearAuth();
-        if (typeof window !== "undefined") window.location.href = "/login";
-        return Promise.reject(error);
-      }
+      const { clearAuth } = useAuthStore.getState();
 
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          return api(originalRequest);
-        });
+        }).then(() => api(originalRequest));
       }
 
       originalRequest._retry = true;
       isRefreshing = true;
 
       try {
-        const { data } = await api.post("/api/auth/refresh", { refreshToken });
-        const store = useAuthStore.getState();
-        store.setAuth(data.token, data.user, data.tenant, data.refreshToken ?? store.refreshToken ?? undefined);
-        processQueue(null, data.token);
-        originalRequest.headers.Authorization = `Bearer ${data.token}`;
+        const { data } = await api.post("/auth/refresh");
+        if (data?.user && data?.tenant) {
+          useAuthStore.getState().setAuth(data.user, data.tenant);
+        }
+        processQueue(null, null);
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
