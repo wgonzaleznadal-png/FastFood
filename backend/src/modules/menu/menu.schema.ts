@@ -39,8 +39,31 @@ export const createKgOrderSchema = z.object({
 });
 
 export const updateStatusSchema = z.object({
-  status: z.enum(["PENDING", "WEIGHED", "PAID", "DELIVERED", "CANCELLED"]),}).passthrough();
+  status: z.enum(["PENDING", "WEIGHED", "PAID", "DELIVERED", "CANCELLED"]),
+  customerName: z.string().max(100).optional(),
+  isDelivery: z.boolean().optional(),
+  deliveryAddress: z.string().max(500).optional(),
+  deliveryPhone: z.string().max(30).optional(),
+  isSentToKitchen: z.boolean().optional(),
+  paymentMethod: z.string().optional(),
+  items: z.array(kgItemSchema).optional(),
+  cartaItems: z.array(cartaItemOrderSchema).optional(),
+});
 
+export const sendToKitchenSchema = z.object({
+  customerName: z.string().max(100).optional(),
+  isDelivery: z.boolean().optional(),
+  deliveryAddress: z.string().max(500).optional(),
+  deliveryPhone: z.string().max(30).optional(),
+  notes: z.string().max(1000).optional(),
+  items: z.array(kgItemSchema).optional(),
+  cartaItems: z.array(cartaItemOrderSchema).optional(),
+});
+
+export const cancelOrderSchema = z.object({
+  cancellationNote: z.string().min(1).max(500),
+  pin: z.string().optional(),
+});
 
 export type KgProductInput = z.infer<typeof kgProductSchema>;
 export type CreateKgOrderInput = z.infer<typeof createKgOrderSchema>;

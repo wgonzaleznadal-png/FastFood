@@ -1,6 +1,7 @@
 // backend/src/modules/finance/finance.service.ts
 import { prisma } from "@/lib/prisma";
 import { createError } from "@/middleware/errorHandler";
+import { logAudit } from "@/lib/auditLog";
 import { StructuralExpenseInput } from "./finance.schema";
 
 // ─── Structural Expenses ──────────────────────────────────────────────────────
@@ -66,6 +67,7 @@ export async function deleteExpense(tenantId: string, id: string) {
   const existing = await prisma.expense.findFirst({ where: { id, tenantId } });
   if (!existing) throw createError("Gasto no encontrado", 404);
   await prisma.expense.delete({ where: { id } });
+  logAudit({ tenantId, action: "EXPENSE_DELETED", entity: "expense", entityId: id });
 }
 
 // ─── Consolidator (LA TORRE DE CONTROL - BI) ──────────────────────────────────
@@ -107,7 +109,7 @@ export async function getConsolidator(
       paymentMethod: true,
       isDelivery: true,
       createdAt: true,
-      items: { select: { quantity: true, unitType: true } }
+      items: { select: { quantity: true, unitType: true, product: { select: { name: true } } } }
     }
   });
 
@@ -126,6 +128,7 @@ export async function getConsolidator(
   const salesByDay: Record<string, number> = {};
   const typeSplit = { delivery: 0, retiro: 0 };
   const shiftSalesMap = new Map<string, number>();
+  const volumeByProduct: Record<string, number> = {};
 
   // Procesamos los pedidos por kilo
   for (const o of kgOrders) {
@@ -143,10 +146,12 @@ export async function getConsolidator(
     if (o.isDelivery) typeSplit.delivery += price;
     else typeSplit.retiro += price;
 
-    // Volumen en Kilos
     for (const item of o.items) {
       if (item.unitType === 'KG') {
-        totalVolumeKg += Number(item.quantity || 0);
+        const qty = Number(item.quantity || 0);
+        totalVolumeKg += qty;
+        const name = item.product?.name || "Sin producto";
+        volumeByProduct[name] = (volumeByProduct[name] || 0) + qty;
       }
     }
 
@@ -179,7 +184,10 @@ export async function getConsolidator(
     ...s,
     totalSales: shiftSalesMap.get(s.id) ?? 0,
     initialCash: Number(s.initialCash || 0),
-    difference: Number(s.difference || 0)
+    finalCash: Number(s.finalCash || 0),
+    expectedCash: Number(s.expectedCash || 0),
+    difference: Number(s.difference || 0),
+    deliverySettlementAmount: Number(s.deliverySettlementAmount || 0),
   }));
 
   const totalInitialCash = enrichedShifts.reduce((acc, s) => acc + s.initialCash, 0);
@@ -208,6 +216,7 @@ export async function getConsolidator(
       kpis: {
         ticketPromedio: totalOrdersCount > 0 ? (totalSales / totalOrdersCount) : 0,
         totalVolumeKg,
+        volumeByProduct,
         deliverySales: typeSplit.delivery,
         retiroSales: typeSplit.retiro,
         totalOrdersCount

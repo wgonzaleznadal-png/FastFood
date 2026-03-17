@@ -1,30 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { Modal, Stack, Group, Text, TextInput, Button, Paper, Divider, NumberInput } from "@mantine/core";
+import { Modal, Stack, Group, Text, TextInput, Button, Paper, Divider, NumberInput, Select } from "@mantine/core";
 import { IconCash, IconPrinter, IconCheck } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
 import { fmt } from "@/lib/format";
+import { ThermalPrinter } from "@/lib/thermalPrinter";
+
+interface Collaborator {
+  user: { id: string; name: string; role: string };
+}
 
 interface DeliverySettlementModalProps {
   opened: boolean;
   onClose: () => void;
   shiftId: string;
   onSuccess: () => void;
+  collaborators?: Collaborator[];
 }
 
-export default function DeliverySettlementModal({ opened, onClose, shiftId, onSuccess }: DeliverySettlementModalProps) {
+export default function DeliverySettlementModal({ opened, onClose, shiftId, onSuccess, collaborators = [] }: DeliverySettlementModalProps) {
+  const [deliveryPersonUserId, setDeliveryPersonUserId] = useState<string | null>(null);
   const [deliveryPersonName, setDeliveryPersonName] = useState("");
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [settlementData, setSettlementData] = useState<any>(null);
 
+  const useCollaboratorSelect = collaborators.length > 0;
+  const selectedName = useCollaboratorSelect && deliveryPersonUserId
+    ? collaborators.find((c) => c.user.id === deliveryPersonUserId)?.user.name ?? ""
+    : deliveryPersonName;
+
   const handleCalculate = async () => {
-    if (!deliveryPersonName.trim()) {
+    const hasSelection = useCollaboratorSelect ? deliveryPersonUserId : deliveryPersonName.trim();
+    if (!hasSelection) {
       notifications.show({
         title: "Datos faltantes",
-        message: "Ingresá el nombre del encargado de delivery",
+        message: useCollaboratorSelect ? "Seleccioná el encargado de delivery" : "Ingresá el nombre del encargado de delivery",
         color: "red"
       });
       return;
@@ -32,21 +45,24 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
 
     setLoading(true);
     try {
-      // Obtener datos de delivery del turno
       const res = await api.get(`/api/shifts/${shiftId}/delivery`);
       const deliveryOrders = res.data;
-      
-      const cashOrders = deliveryOrders.filter((o: any) => 
-        o.isPaid && o.paymentMethod === "EFECTIVO"
+      const paidOrders = deliveryOrders.filter((o: any) => o.isPaid);
+      const cashOrders = paidOrders.filter((o: any) =>
+        o.paymentMethod === "EFECTIVO"
       );
-      
-      const totalCash = cashOrders.reduce((sum: number, o: any) => 
+      const mpOrders = paidOrders.filter((o: any) =>
+        o.paymentMethod === "MERCADO PAGO" || o.paymentMethod === "MERCADOPAGO"
+      );
+
+      const totalCash = cashOrders.reduce((sum: number, o: any) =>
         sum + Number(o.totalPrice), 0
       );
-      
+
       setSettlementData({
-        totalOrders: deliveryOrders.length,
+        totalOrders: paidOrders.length,
         cashOrders: cashOrders.length,
+        mpOrders: mpOrders.length,
         totalCash,
         orders: cashOrders,
       });
@@ -63,21 +79,38 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
       return;
     }
 
+    const hasSelection = useCollaboratorSelect ? deliveryPersonUserId : deliveryPersonName.trim();
+    if (!hasSelection) {
+      notifications.show({
+        title: "Datos faltantes",
+        message: useCollaboratorSelect ? "Seleccioná el encargado de delivery" : "Ingresá el nombre del encargado de delivery",
+        color: "red"
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await api.post(`/api/shifts/${shiftId}/close-delivery`, {
-        receivedAmount,
-        deliveryPersonName: deliveryPersonName.trim(),
-      });
+      const payload: any = { receivedAmount };
+      if (useCollaboratorSelect && deliveryPersonUserId) {
+        payload.deliveryPersonUserId = deliveryPersonUserId;
+      } else {
+        payload.deliveryPersonName = deliveryPersonName.trim();
+      }
+
+      const res = await api.post(`/api/shifts/${shiftId}/close-delivery`, payload);
+
+      const displayName = useCollaboratorSelect && deliveryPersonUserId
+        ? collaborators.find((c) => c.user.id === deliveryPersonUserId)?.user.name ?? deliveryPersonName
+        : deliveryPersonName;
 
       notifications.show({
         title: "Rendición registrada",
-        message: `${deliveryPersonName} rindió ${fmt(receivedAmount)}`,
+        message: `${displayName} rindió ${fmt(receivedAmount)}`,
         color: "green",
         icon: <IconCheck size={16} />
       });
 
-      // Imprimir cierre de delivery
       printDeliverySettlement(res.data);
 
       onSuccess();
@@ -89,12 +122,32 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
     }
   };
 
-  const printDeliverySettlement = (data: any) => {
-    // TODO: Implementar impresión térmica de cierre delivery
-    console.log("Imprimir cierre delivery:", data);
+  const printDeliverySettlement = async (data: any) => {
+    try {
+      await ThermalPrinter.quickPrint({
+        orderNumber: 0,
+        customerName: "",
+        items: [],
+        createdAt: new Date().toISOString(),
+        deliverySettlement: {
+          deliveryPersonName: data.deliveryPersonName || selectedName,
+          totalOrders: data.totalDeliveryOrders ?? settlementData?.totalOrders ?? 0,
+          cashOrdersCount: data.cashOrdersCount ?? settlementData?.cashOrders ?? 0,
+          mpOrdersCount: data.mpOrdersCount ?? settlementData?.mpOrders ?? 0,
+          totalCash: data.totalDeliveryCash ?? settlementData?.totalCash ?? 0,
+          receivedAmount: data.receivedAmount ?? receivedAmount,
+          difference: data.difference ?? (receivedAmount - (settlementData?.totalCash ?? 0)),
+          createdAt: new Date().toISOString(),
+        },
+      });
+      notifications.show({ title: "Comanda impresa", message: "Rendición de delivery enviada a impresora", color: "green" });
+    } catch (err: any) {
+      notifications.show({ title: "Error impresora", message: err?.message || "No se pudo imprimir", color: "red" });
+    }
   };
 
   const handleClose = () => {
+    setDeliveryPersonUserId(null);
     setDeliveryPersonName("");
     setReceivedAmount(0);
     setSettlementData(null);
@@ -111,13 +164,25 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
       size="lg"
     >
       <Stack gap="md">
-        <TextInput
-          label="Encargado de Delivery"
-          placeholder="Nombre del encargado"
-          value={deliveryPersonName}
-          onChange={(e) => setDeliveryPersonName(e.currentTarget.value)}
-          required
-        />
+        {useCollaboratorSelect ? (
+          <Select
+            label="Encargado de Delivery"
+            placeholder="Seleccioná el colaborador"
+            value={deliveryPersonUserId}
+            onChange={(v) => setDeliveryPersonUserId(v)}
+            data={collaborators.map((c) => ({ value: c.user.id, label: `${c.user.name} (${c.user.role})` }))}
+            searchable
+            required
+          />
+        ) : (
+          <TextInput
+            label="Encargado de Delivery"
+            placeholder="Nombre del encargado"
+            value={deliveryPersonName}
+            onChange={(e) => setDeliveryPersonName(e.currentTarget.value)}
+            required
+          />
+        )}
 
         {!settlementData ? (
           <Button
@@ -137,7 +202,11 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
                   <Text fw={600}>{settlementData.totalOrders}</Text>
                 </Group>
                 <Group justify="space-between">
-                  <Text size="sm" c="dimmed">Cantidad de Delivery Efectivo</Text>
+                  <Text size="sm" c="dimmed">Por Mercado Pago</Text>
+                  <Text fw={600}>{settlementData.mpOrders ?? 0}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Por Efectivo</Text>
                   <Text fw={600}>{settlementData.cashOrders}</Text>
                 </Group>
                 <Divider />

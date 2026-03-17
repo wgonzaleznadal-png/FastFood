@@ -31,7 +31,7 @@ interface CartaSelectorProps {
 }
 
 export default function CartaSelector({ opened, onClose, onAddItems }: CartaSelectorProps) {
-  const [activeTab, setActiveTab] = useState<string>("KITCHEN");
+  const [activeTab, setActiveTab] = useState<string>("COCINA");
   const [items, setItems] = useState<CartaProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [cart, setCart] = useState<CartaItem[]>([]);
@@ -90,12 +90,12 @@ export default function CartaSelector({ opened, onClose, onAddItems }: CartaSele
       size="md"
     >
       <Stack gap="md">
-        <Tabs value={activeTab} onChange={(value) => setActiveTab(value || "KITCHEN")}>
+        <Tabs value={activeTab} onChange={(value) => setActiveTab(value || "COCINA")}>
           <Tabs.List>
-            <Tabs.Tab value="KITCHEN" leftSection={<IconChefHat size={16} />}>
+            <Tabs.Tab value="COCINA" leftSection={<IconChefHat size={16} />}>
               Cocina
             </Tabs.Tab>
-            <Tabs.Tab value="BAR" leftSection={<IconGlass size={16} />}>
+            <Tabs.Tab value="BARRA" leftSection={<IconGlass size={16} />}>
               Barra
             </Tabs.Tab>
           </Tabs.List>

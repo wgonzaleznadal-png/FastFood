@@ -180,6 +180,64 @@ addedItems?: TicketItem[];
 
 previousItems?: TicketItem[];
 
+// Comanda de cierre de turno delivery (rendición)
+
+deliverySettlement?: {
+
+  deliveryPersonName: string;
+
+  totalOrders: number;
+
+  cashOrdersCount: number;
+
+  mpOrdersCount: number;
+
+  totalCash: number;
+
+  receivedAmount: number;
+
+  difference: number;
+
+  createdAt: string;
+
+};
+
+// Ticket de cierre de caja completo
+
+shiftClosing?: {
+
+  cashierName: string;
+
+  openedAt: string;
+
+  closedAt: string;
+
+  initialCash: number;
+
+  totalSales: number;
+
+  paymentMethods: Array<{ name: string; amount: number }>;
+
+  totalExpenses: number;
+
+  expenses: Array<{ description: string; amount: number }>;
+
+  deliverySettlement: { amount: number; by: string } | null;
+
+  finalCash: number;
+
+  expectedCash: number;
+
+  difference: number;
+
+  counts: { total: number; paid: number; cancelled: number; delivery: number; local: number };
+
+  cashSalesLocal?: number;
+
+  billCounts: Record<string, number>;
+
+};
+
 }
 
 
@@ -377,6 +435,141 @@ const { INIT, NEWLINE, BOLD_ON, BOLD_OFF, DOUBLE_HEIGHT, NORMAL_TEXT, ALIGN_CENT
 let ticket = INIT;
 
 const linea = createLine(this.width, '-');
+
+// TICKET DE CIERRE DE CAJA COMPLETO
+if (data.shiftClosing) {
+  const c = data.shiftClosing;
+  ticket += ALIGN_CENTER;
+  ticket += DOUBLE_HEIGHT + BOLD_ON;
+  ticket += 'CIERRE DE CAJA' + NEWLINE;
+  ticket += NORMAL_TEXT + BOLD_OFF;
+  ticket += linea + NEWLINE;
+  ticket += ALIGN_LEFT;
+  ticket += BOLD_ON + 'Cajero: ' + BOLD_OFF + sanitizeText(c.cashierName) + NEWLINE;
+  ticket += BOLD_ON + 'Apertura: ' + BOLD_OFF + sanitizeText(formatDateTime(c.openedAt)) + NEWLINE;
+  ticket += BOLD_ON + 'Cierre:   ' + BOLD_OFF + sanitizeText(formatDateTime(c.closedAt)) + NEWLINE;
+  ticket += linea + NEWLINE;
+
+  ticket += BOLD_ON + 'RESUMEN DE PEDIDOS' + BOLD_OFF + NEWLINE;
+  ticket += 'Total Pedidos:  ' + c.counts.total + NEWLINE;
+  ticket += '  Cobrados:     ' + c.counts.paid + NEWLINE;
+  ticket += '  Retiro:       ' + c.counts.local + NEWLINE;
+  ticket += '  Delivery:     ' + c.counts.delivery + NEWLINE;
+  if (c.counts.cancelled > 0) {
+    ticket += '  Cancelados:   ' + c.counts.cancelled + NEWLINE;
+  }
+  ticket += linea + NEWLINE;
+
+  ticket += BOLD_ON + 'VENTAS POR METODO DE PAGO' + BOLD_OFF + NEWLINE;
+  for (const pm of c.paymentMethods) {
+    const label = sanitizeText(pm.name);
+    const spaces = Math.max(1, 24 - label.length);
+    ticket += label + ' '.repeat(spaces) + formatPrice(pm.amount) + NEWLINE;
+  }
+  ticket += linea + NEWLINE;
+  ticket += DOUBLE_HEIGHT + BOLD_ON;
+  ticket += 'TOTAL VENTAS ' + formatPrice(c.totalSales) + NEWLINE;
+  ticket += NORMAL_TEXT + BOLD_OFF;
+  ticket += linea + NEWLINE;
+
+  if (c.expenses.length > 0) {
+    ticket += BOLD_ON + 'EGRESOS CAJA CHICA' + BOLD_OFF + NEWLINE;
+    for (const exp of c.expenses) {
+      const desc = sanitizeText(exp.description);
+      const spaces = Math.max(1, 22 - desc.length);
+      ticket += desc + ' '.repeat(spaces) + '-' + formatPrice(exp.amount) + NEWLINE;
+    }
+    ticket += BOLD_ON + 'Total Egresos: -' + formatPrice(c.totalExpenses) + BOLD_OFF + NEWLINE;
+    ticket += linea + NEWLINE;
+  }
+
+  if (c.deliverySettlement) {
+    ticket += BOLD_ON + 'RENDICION DELIVERY' + BOLD_OFF + NEWLINE;
+    ticket += 'Encargado: ' + sanitizeText(c.deliverySettlement.by) + NEWLINE;
+    ticket += 'Efectivo entregado: ' + formatPrice(c.deliverySettlement.amount) + NEWLINE;
+    ticket += linea + NEWLINE;
+  }
+
+  const DENOM_ORDER = [20000, 10000, 2000, 1000, 500, 200, 100];
+  const hasBills = DENOM_ORDER.some(d => (c.billCounts[String(d)] || 0) > 0);
+  if (hasBills) {
+    ticket += BOLD_ON + 'CONTEO DE BILLETES' + BOLD_OFF + NEWLINE;
+    for (const d of DENOM_ORDER) {
+      const count = c.billCounts[String(d)] || 0;
+      if (count > 0) {
+        ticket += '$' + d.toLocaleString('es-AR') + ' x ' + count + ' = ' + formatPrice(count * d) + NEWLINE;
+      }
+    }
+    ticket += linea + NEWLINE;
+  }
+
+  ticket += NEWLINE;
+  ticket += DOUBLE_HEIGHT + BOLD_ON;
+  ticket += 'CUADRE DE CAJA' + NEWLINE;
+  ticket += NORMAL_TEXT + BOLD_OFF;
+  const localCash = c.cashSalesLocal ?? (c.paymentMethods.find(m => m.name === 'EFECTIVO')?.amount || 0);
+  ticket += 'Caja Inicial:       ' + formatPrice(c.initialCash) + NEWLINE;
+  ticket += '+ Efectivo Local:   ' + formatPrice(localCash) + NEWLINE;
+  if (c.totalExpenses > 0) {
+    ticket += '- Egresos:          ' + formatPrice(c.totalExpenses) + NEWLINE;
+  }
+  if (c.deliverySettlement) {
+    ticket += '+ Rend. Delivery:   ' + formatPrice(c.deliverySettlement.amount) + NEWLINE;
+  }
+  ticket += linea + NEWLINE;
+  ticket += BOLD_ON + 'Esperado:  ' + formatPrice(c.expectedCash) + BOLD_OFF + NEWLINE;
+  ticket += BOLD_ON + 'Contado:   ' + formatPrice(c.finalCash) + BOLD_OFF + NEWLINE;
+  ticket += NEWLINE;
+  ticket += DOUBLE_HEIGHT + BOLD_ON;
+  const diffLabel = c.difference === 0 ? 'CUADRE PERFECTO' : c.difference > 0 ? 'SOBRA: ' + formatPrice(c.difference) : 'FALTA: ' + formatPrice(Math.abs(c.difference));
+  ticket += diffLabel + NEWLINE;
+  ticket += NORMAL_TEXT + BOLD_OFF;
+  ticket += linea + NEWLINE;
+
+  ticket += NEWLINE;
+  ticket += BOLD_ON + 'FIRMA CAJERO:' + BOLD_OFF + NEWLINE;
+  ticket += NEWLINE + NEWLINE + NEWLINE + NEWLINE;
+  ticket += '___________________________' + NEWLINE;
+  ticket += sanitizeText(c.cashierName) + NEWLINE;
+  ticket += NEWLINE;
+  ticket += ALIGN_CENTER;
+  ticket += 'GastroDash - Cierre de Caja' + NEWLINE;
+  ticket += NEWLINE + NEWLINE + NEWLINE + NEWLINE;
+  ticket += CUT_PAPER;
+  return new TextEncoder().encode(ticket);
+}
+
+// COMANDA DE CIERRE DE TURNO DELIVERY (RENDICIÓN)
+if (data.deliverySettlement) {
+  const s = data.deliverySettlement;
+  ticket += ALIGN_CENTER;
+  ticket += DOUBLE_HEIGHT + BOLD_ON;
+  ticket += 'CIERRE TURNO DELIVERY' + NEWLINE;
+  ticket += NORMAL_TEXT + BOLD_OFF;
+  ticket += sanitizeText(s.deliveryPersonName.toUpperCase()) + NEWLINE;
+  ticket += linea + NEWLINE;
+  ticket += ALIGN_LEFT;
+  ticket += 'Cant. Deliverys total: ' + s.totalOrders + NEWLINE;
+  ticket += 'Por Mercado Pago: ' + s.mpOrdersCount + NEWLINE;
+  ticket += 'Por Efectivo: ' + s.cashOrdersCount + NEWLINE;
+  ticket += linea + NEWLINE;
+  ticket += BOLD_ON + 'Total Efectivo: ' + BOLD_OFF + formatPrice(s.totalCash) + NEWLINE;
+  ticket += BOLD_ON + 'Efectivo Entregado: ' + BOLD_OFF + formatPrice(s.receivedAmount) + NEWLINE;
+  ticket += BOLD_ON + 'Diferencia: ' + BOLD_OFF + formatPrice(s.difference) + NEWLINE;
+  ticket += linea + NEWLINE;
+  ticket += NEWLINE;
+  ticket += BOLD_ON + 'FIRMA ENCARGADO DELIVERY:' + BOLD_OFF + NEWLINE;
+  ticket += NEWLINE + NEWLINE + NEWLINE + NEWLINE;
+  ticket += '___________________________' + NEWLINE;
+  ticket += NEWLINE;
+  ticket += sanitizeText(formatDateTime(s.createdAt)) + NEWLINE;
+  ticket += linea + NEWLINE;
+  ticket += ALIGN_CENTER;
+  ticket += 'GastroDash - Rendicion' + NEWLINE;
+  ticket += NEWLINE + NEWLINE + NEWLINE + NEWLINE;
+  ticket += CUT_PAPER;
+  return new TextEncoder().encode(ticket);
+}
 
 const isSimpleComanda = !!data.headerTitle;
 

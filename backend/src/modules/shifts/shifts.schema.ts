@@ -8,6 +8,7 @@ export const openShiftSchema = z.object({
 export const closeShiftSchema = z.object({
   finalCash: z.number().nonnegative(),
   notes: z.string().optional(),
+  billCounts: z.record(z.string(), z.union([z.number(), z.string()])).optional(),
 });
 
 export const cashExpenseSchema = z.object({
@@ -36,8 +37,12 @@ export const renderOrderSchema = z.object({
 
 export const closeDeliverySchema = z.object({
   receivedAmount: z.number().nonnegative(),
-  deliveryPersonName: z.string().min(1, "El nombre del encargado es obligatorio"),
-});
+  deliveryPersonUserId: z.string().min(1).optional(),
+  deliveryPersonName: z.string().optional(),
+}).refine(
+  (data) => data.deliveryPersonUserId || (data.deliveryPersonName && data.deliveryPersonName.trim().length > 0),
+  { message: "Seleccioná el encargado de delivery o ingresá el nombre", path: ["deliveryPersonUserId"] }
+);
 
 export type OpenShiftInput = z.infer<typeof openShiftSchema>;
 export type CloseShiftInput = z.infer<typeof closeShiftSchema>;

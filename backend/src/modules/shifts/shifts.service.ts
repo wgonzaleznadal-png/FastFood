@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createError } from "@/middleware/errorHandler";
+import { logAudit } from "@/lib/auditLog";
 import { OpenShiftInput, CloseShiftInput, CashExpenseInput, AddCollaboratorInput, CreateCadeteInput, CloseDeliveryInput } from "./shifts.schema";
 import { notifyOrderStatusChange } from "../whatsapp/whatsapp.notifications";
 
@@ -32,63 +33,81 @@ export async function closeShift(
   input: CloseShiftInput,
   role: string
 ) {
+  console.log("[closeShift] Starting close for shift:", shiftId);
+
   const shift = await prisma.shift.findFirst({
     where: { id: shiftId, tenantId, status: "OPEN" },
   });
   if (!shift) throw createError("Turno no encontrado", 404);
 
-  // 1. Venta TOTAL (Para la estadística - solo pedidos PAGADOS)
-  const allKgOrders = await prisma.order.aggregate({
+  const paidOrders = await prisma.order.findMany({
     where: { shiftId, isPaid: true },
-    _sum: { totalPrice: true },
+    select: { totalPrice: true, paymentMethod: true, isDelivery: true },
   });
 
-  // 2. Solo EFECTIVO (Lo que el cajero DEBE tener en la mano)
-  const cashKgOrders = await prisma.order.aggregate({
-    where: { 
-      shiftId, 
-      isPaid: true,
-      paymentMethod: "EFECTIVO"
-    },
-    _sum: { totalPrice: true },
-  });
+  // Solo efectivo de LOCAL/retiro (lo que el cajero recibió directamente)
+  const localCashSales = paidOrders
+    .filter((o) => o.paymentMethod === "EFECTIVO" && !o.isDelivery)
+    .reduce((sum, o) => sum + Number(o.totalPrice), 0);
 
-  const cashExpensesAgg = await prisma.expense.aggregate({
+  const cashExpenses = await prisma.expense.findMany({
     where: { shiftId, type: "CASH" },
-    _sum: { amount: true },
+    select: { amount: true },
   });
+  const expensesTotal = cashExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
-  // CORRECCIÓN: Usamos totalPrice y manejamos Decimal de Prisma
-  const totalSales = Number(allKgOrders._sum.totalPrice ?? 0);
-  const totalCashSales = Number(cashKgOrders._sum.totalPrice ?? 0);
-  const expensesTotal = Number(cashExpensesAgg._sum.amount ?? 0);
-
-  // Obtener rendición de delivery si existe
+  // Rendición = lo que el encargado de delivery entregó físicamente al cajero
   const deliverySettlement = Number(shift.deliverySettlementAmount ?? 0);
-  
-  // EL CÁLCULO REAL DEL CAJÓN:
-  // Caja Inicial + Ventas Efectivo - Gastos + Rendición Delivery
-  const expectedPhysicalCash = Number(shift.initialCash) + totalCashSales - expensesTotal + deliverySettlement;
-  
-  // DIFERENCIA FÍSICA: Lo que el cajero contó vs lo que debería haber
+
+  // Cajón = Inicial + Efectivo Local + Rendición Delivery - Gastos
+  const expectedPhysicalCash = Number(shift.initialCash) + localCashSales - expensesTotal + deliverySettlement;
   const difference = input.finalCash - expectedPhysicalCash;
 
-  // Eliminar cadetes del turno
-  await prisma.cadete.deleteMany({
-    where: { tenantId }
-  });
-  
-  return prisma.shift.update({
+  if (process.env.NODE_ENV === "development") {
+    console.log("[closeShift] Calc:", { localCashSales, expensesTotal, deliverySettlement, expectedPhysicalCash, finalCash: input.finalCash, difference });
+  }
+
+  // Desvincular cadetes de pedidos y eliminar cadetes temporales
+  try {
+    await prisma.order.updateMany({
+      where: { shiftId },
+      data: { cadeteId: null },
+    });
+    await prisma.cadete.deleteMany({
+      where: { tenantId, isFixed: false },
+    });
+  } catch (e) {
+    console.warn("[closeShift] Warning: cadete cleanup error:", e);
+  }
+
+  const updated = await prisma.shift.update({
     where: { id: shiftId },
     data: {
       status: "CLOSED",
       closedAt: new Date(),
       finalCash: input.finalCash,
       expectedCash: expectedPhysicalCash,
-      difference: difference,
-      notes: input.notes,
+      difference,
+      notes: input.notes ?? null,
+      billCounts: input.billCounts ? JSON.parse(JSON.stringify(input.billCounts)) : null,
     },
   });
+
+  logAudit({ tenantId, userId, action: "SHIFT_CLOSED", entity: "shift", entityId: shiftId });
+  console.log("[closeShift] Shift closed OK");
+  return serializeShiftForJson(updated as Record<string, unknown>);
+}
+
+function serializeShiftForJson(shift: Record<string, unknown>) {
+  const num = (v: unknown) => (v != null ? String(v) : null);
+  return {
+    ...shift,
+    initialCash: num(shift.initialCash),
+    finalCash: num(shift.finalCash),
+    expectedCash: num(shift.expectedCash),
+    difference: num(shift.difference),
+    deliverySettlementAmount: num(shift.deliverySettlementAmount),
+  };
 }
 
 export async function getMyActiveShift(tenantId: string, userId: string) {
@@ -119,7 +138,7 @@ export async function getMyActiveShift(tenantId: string, userId: string) {
     if (collab) shift = collab.shift;
   }
 
-  return shift;
+  return shift ? serializeShiftForJson(shift as Record<string, unknown>) : null;
 }
 
 export async function getShiftSummary(tenantId: string, shiftId: string, userId: string, role: string) {
@@ -181,47 +200,140 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
   if (!shift) throw createError("Turno no encontrado", 404);
   if (role === "CASHIER" && shift.openedById !== userId) throw createError("No tenés acceso", 403);
 
-  // 1. Traemos TODOS los pedidos cobrados (READY) o entregados por cadete (DELIVERED)
-  const kgOrders = await prisma.order.findMany({
-    where: { 
-      shiftId, 
-      isPaid: true 
+  const allOrders = await prisma.order.findMany({
+    where: { shiftId },
+    select: {
+      id: true,
+      orderNumber: true,
+      customerName: true,
+      totalPrice: true,
+      paymentMethod: true,
+      isPaid: true,
+      isDelivery: true,
+      status: true,
+      createdAt: true,
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          unitType: true,
+          unitPrice: true,
+          subtotal: true,
+          product: { select: { id: true, name: true } },
+        },
+      },
     },
-    select: { totalPrice: true, paymentMethod: true }
+    orderBy: { orderNumber: "asc" },
   });
 
-  // 2. Calculamos el Total de Ventas Real ($71.000 en tu caso)
-  const totalSales = kgOrders.reduce((sum, o) => sum + Number(o.totalPrice), 0);
+  const paidOrders = allOrders.filter((o) => o.isPaid);
+  const totalSales = paidOrders.reduce((sum, o) => sum + Number(o.totalPrice), 0);
 
-  // 3. AGRUPACIÓN REAL: Sumamos lo que dice la DB para cada método
-  const methodsMap = kgOrders.reduce((acc, o) => {
-    const method = o.paymentMethod || 'EFECTIVO';
+  const methodsMap = paidOrders.reduce((acc, o) => {
+    const method = o.paymentMethod || "EFECTIVO";
     acc[method] = (acc[method] || 0) + Number(o.totalPrice);
     return acc;
   }, {} as Record<string, number>);
 
   const paymentMethods = Object.entries(methodsMap).map(([name, amount]) => ({
-    id: name.toLowerCase().replace(/\s+/g, '_'),
-    name: name,
-    amount
+    id: name.toLowerCase().replace(/\s+/g, "_"),
+    name,
+    amount,
   }));
 
-  const cashExpensesAgg = await prisma.expense.aggregate({
+  const expensesList = await prisma.expense.findMany({
     where: { shiftId, type: "CASH" },
-    _sum: { amount: true },
+    select: { id: true, description: true, amount: true, notes: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
   });
+  const totalExpenses = expensesList.reduce((sum, e) => sum + Number(e.amount), 0);
+
+  const cancelledOrders = allOrders.filter((o) => o.status === "CANCELLED");
+  const deliveryOrders = allOrders.filter((o) => o.isDelivery && o.status !== "CANCELLED");
+  const localOrders = allOrders.filter((o) => !o.isDelivery && o.status !== "CANCELLED");
+
+  // Efectivo separado: local (cajero recibió) vs delivery (cadete cobró)
+  const cashSalesLocal = paidOrders
+    .filter((o) => o.paymentMethod === "EFECTIVO" && !o.isDelivery)
+    .reduce((sum, o) => sum + Number(o.totalPrice), 0);
+  const cashSalesDelivery = paidOrders
+    .filter((o) => o.paymentMethod === "EFECTIVO" && o.isDelivery)
+    .reduce((sum, o) => sum + Number(o.totalPrice), 0);
 
   return {
     shift: {
-      ...shift,
-      initialCash: shift.initialCash.toString(),
-      finalCash: shift.finalCash?.toString(),
-      expectedCash: shift.expectedCash?.toString(),
-      difference: shift.difference?.toString(),
+      id: shift.id,
+      tenantId: shift.tenantId,
+      openedById: shift.openedById,
+      openedAt: shift.openedAt,
+      closedAt: shift.closedAt,
+      initialCash: String(shift.initialCash),
+      finalCash: shift.finalCash != null ? String(shift.finalCash) : null,
+      expectedCash: shift.expectedCash != null ? String(shift.expectedCash) : null,
+      difference: shift.difference != null ? String(shift.difference) : null,
+      status: shift.status,
+      notes: shift.notes,
+      deliverySettlementAmount: shift.deliverySettlementAmount != null ? String(shift.deliverySettlementAmount) : null,
+      deliverySettlementBy: shift.deliverySettlementBy,
+      deliverySettlementAt: shift.deliverySettlementAt,
+      billCounts: shift.billCounts,
+      createdAt: shift.createdAt,
+      updatedAt: shift.updatedAt,
+      openedBy: shift.openedBy ? { id: shift.openedBy.id, name: shift.openedBy.name, role: String(shift.openedBy.role) } : null,
     },
     totalSales,
-    totalExpenses: Number(cashExpensesAgg._sum.amount ?? 0),
+    totalExpenses,
     paymentMethods,
+    orders: allOrders.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      customerName: o.customerName,
+      totalPrice: String(o.totalPrice),
+      paymentMethod: o.paymentMethod,
+      isPaid: o.isPaid,
+      isDelivery: o.isDelivery,
+      status: o.status,
+      createdAt: o.createdAt,
+      items: o.items.map((i) => ({
+        id: i.id,
+        productName: i.product?.name || "Sin producto",
+        quantity: Number(i.quantity),
+        unitType: i.unitType,
+        unitPrice: Number(i.unitPrice),
+        subtotal: Number(i.subtotal),
+      })),
+    })),
+    expenses: expensesList.map((e) => ({
+      id: e.id,
+      description: e.description,
+      amount: Number(e.amount),
+      notes: e.notes,
+      createdAt: e.createdAt,
+    })),
+    productSummary: (() => {
+      const map: Record<string, { kg: number; units: number; revenue: number }> = {};
+      for (const o of paidOrders) {
+        for (const item of o.items) {
+          const name = item.product?.name || "Sin producto";
+          if (!map[name]) map[name] = { kg: 0, units: 0, revenue: 0 };
+          if (item.unitType === "KG") map[name].kg += Number(item.quantity);
+          else map[name].units += Number(item.quantity);
+          map[name].revenue += Number(item.subtotal);
+        }
+      }
+      return Object.entries(map).map(([name, data]) => ({ name, ...data }));
+    })(),
+    totalVolumeKg: paidOrders.reduce((sum, o) =>
+      sum + o.items.filter((i) => i.unitType === "KG").reduce((s, i) => s + Number(i.quantity), 0), 0),
+    counts: {
+      total: allOrders.length,
+      paid: paidOrders.length,
+      cancelled: cancelledOrders.length,
+      delivery: deliveryOrders.length,
+      local: localOrders.length,
+    },
+    cashSalesLocal,
+    cashSalesDelivery,
   };
 }
 
@@ -251,10 +363,24 @@ export async function createCashExpense(
 }
 
 export async function listCashExpenses(tenantId: string, shiftId: string) {
-  return prisma.expense.findMany({
+  const expenses = await prisma.expense.findMany({
     where: { tenantId, shiftId, type: "CASH" },
     orderBy: { createdAt: "desc" },
   });
+  return expenses.map((e) => ({
+    id: e.id,
+    tenantId: e.tenantId,
+    shiftId: e.shiftId,
+    userId: e.userId,
+    type: e.type,
+    category: e.category,
+    description: e.description,
+    amount: Number(e.amount),
+    currency: e.currency,
+    notes: e.notes,
+    createdAt: e.createdAt,
+    updatedAt: e.updatedAt,
+  }));
 }
 
 export async function deleteCashExpense(
@@ -494,38 +620,55 @@ export async function closeDeliverySettlement(tenantId: string, shiftId: string,
     where: { id: shiftId, tenantId, status: "OPEN" },
   });
   if (!shift) throw createError("Turno no encontrado", 404);
-  
-  // Calcular total de delivery en efectivo
-  const deliveryOrders = await prisma.order.findMany({
+
+  let deliveryPersonName = input.deliveryPersonName?.trim();
+  if (input.deliveryPersonUserId) {
+    const user = await prisma.user.findFirst({
+      where: { id: input.deliveryPersonUserId, tenantId },
+    });
+    if (user) deliveryPersonName = user.name;
+  }
+  if (!deliveryPersonName) throw createError("Nombre del encargado de delivery requerido", 400);
+
+  // Todos los deliverys pagados del turno (para conteo)
+  const allPaidDelivery = await prisma.order.findMany({
     where: {
       shiftId,
       isDelivery: true,
       isPaid: true,
-      paymentMethod: "EFECTIVO",
     },
     include: {
       cadete: true,
       items: { include: { product: true } },
     },
   });
-  
-  const totalDeliveryCash = deliveryOrders.reduce((sum, order) => sum + Number(order.totalPrice), 0);
-  
-  // Actualizar shift con rendición
+
+  const cashOrders = allPaidDelivery.filter((o) => o.paymentMethod === "EFECTIVO");
+  const mpOrders = allPaidDelivery.filter((o) => o.paymentMethod === "MERCADO PAGO" || o.paymentMethod === "MERCADOPAGO");
+  const otherOrders = allPaidDelivery.filter((o) => o.paymentMethod !== "EFECTIVO" && o.paymentMethod !== "MERCADO PAGO" && o.paymentMethod !== "MERCADOPAGO");
+
+  const totalDeliveryCash = cashOrders.reduce((sum, order) => sum + Number(order.totalPrice), 0);
+
   const updatedShift = await prisma.shift.update({
     where: { id: shiftId },
     data: {
       deliverySettlementAmount: input.receivedAmount,
-      deliverySettlementBy: input.deliveryPersonName,
+      deliverySettlementBy: deliveryPersonName,
+      deliverySettlementUserId: input.deliveryPersonUserId ?? null,
       deliverySettlementAt: new Date(),
     },
   });
-  
+
   return {
     shift: updatedShift,
-    deliveryOrders,
+    deliveryOrders: cashOrders,
+    totalDeliveryOrders: allPaidDelivery.length,
+    cashOrdersCount: cashOrders.length,
+    mpOrdersCount: mpOrders.length,
+    otherOrdersCount: otherOrders.length,
     totalDeliveryCash,
     receivedAmount: input.receivedAmount,
     difference: input.receivedAmount - totalDeliveryCash,
+    deliveryPersonName,
   };
 }

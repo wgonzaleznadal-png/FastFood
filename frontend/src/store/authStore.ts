@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
+const safeStorage = {
+  getItem: (name: string) => (typeof window !== "undefined" ? localStorage.getItem(name) : null),
+  setItem: (name: string, value: string) => { if (typeof window !== "undefined") localStorage.setItem(name, value); },
+  removeItem: (name: string) => { if (typeof window !== "undefined") localStorage.removeItem(name); },
+};
+
 interface AuthUser {
   id: string;
   name: string;
@@ -16,11 +22,12 @@ interface AuthTenant {
 
 interface AuthState {
   token: string | null;
+  refreshToken: string | null;
   user: AuthUser | null;
   tenant: AuthTenant | null;
   isAuthenticated: boolean;
   _hasHydrated: boolean;
-  setAuth: (token: string, user: AuthUser, tenant: AuthTenant) => void;
+  setAuth: (token: string, user: AuthUser, tenant: AuthTenant, refreshToken?: string) => void;
   clearAuth: () => void;
   setHasHydrated: (state: boolean) => void;
 }
@@ -29,19 +36,20 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       token: null,
+      refreshToken: null,
       user: null,
       tenant: null,
       isAuthenticated: false,
       _hasHydrated: false,
-      setAuth: (token, user, tenant) =>
-        set({ token, user, tenant, isAuthenticated: true }),
+      setAuth: (token, user, tenant, refreshToken) =>
+        set({ token, user, tenant, refreshToken: refreshToken ?? null, isAuthenticated: true }),
       clearAuth: () =>
-        set({ token: null, user: null, tenant: null, isAuthenticated: false }),
+        set({ token: null, refreshToken: null, user: null, tenant: null, isAuthenticated: false }),
       setHasHydrated: (state) => set({ _hasHydrated: state }),
     }),
     {
       name: "gastrodash-auth",
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => safeStorage),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },

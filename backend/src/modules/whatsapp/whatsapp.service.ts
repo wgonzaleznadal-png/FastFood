@@ -22,8 +22,15 @@ const MAX_RETRIES = 5;
 const AUTH_BASE = path.resolve(process.cwd(), ".wa-auth");
 
 function getAuthDir(tenantId: string) {
+  if (!/^c[a-z0-9]{24,}$/.test(tenantId)) {
+    throw new Error("Invalid tenant ID format");
+  }
   const dir = path.join(AUTH_BASE, tenantId);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const resolved = path.resolve(dir);
+  if (!resolved.startsWith(path.resolve(AUTH_BASE))) {
+    throw new Error("Path traversal detected");
+  }
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   return dir;
 }
 
@@ -63,7 +70,9 @@ export async function connectWhatsApp(tenantId: string, phoneNumber?: string): P
 async function _startSocket(tenantId: string, phoneNumber?: string) {
   console.log(`[WA:${tenantId}] 🚀 _startSocket iniciado`);
   const authDir = getAuthDir(tenantId);
-  console.log(`[WA:${tenantId}] Auth dir: ${authDir}`);
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[WA:${tenantId}] Auth dir: ${authDir}`);
+  }
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
   const sock = makeWASocket({
@@ -87,7 +96,9 @@ async function _startSocket(tenantId: string, phoneNumber?: string) {
       try {
         const code = await sock.requestPairingCode(phoneNumber);
         pairingCodes.set(tenantId, code);
-        log(tenantId, `📱 Pairing code generado: ${code}`);
+        if (process.env.NODE_ENV === "development") {
+          log(tenantId, `📱 Pairing code generado: ${code}`);
+        }
       } catch (err) {
         console.error(`[WA:${tenantId}] Error al generar pairing code:`, err);
       }
@@ -159,7 +170,9 @@ async function _startSocket(tenantId: string, phoneNumber?: string) {
     }
     for (const msg of messages) {
       const jid = msg.key.remoteJid;
-      console.log(`[WA:${tenantId}] Procesando mensaje de ${jid}, fromMe: ${msg.key.fromMe}`);
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[WA:${tenantId}] Procesando mensaje de ${jid}, fromMe: ${msg.key.fromMe}`);
+      }
       if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast") {
         console.log(`[WA:${tenantId}] Mensaje ignorado (grupo o broadcast)`);
         continue;
@@ -168,14 +181,18 @@ async function _startSocket(tenantId: string, phoneNumber?: string) {
       // Mensajes enviados desde el teléfono del negocio
       if (msg.key.fromMe) {
         const text = extractText(msg.message);
-        console.log(`[WA:${tenantId}] Mensaje del operador: ${text?.substring(0, 50)}`);
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[WA:${tenantId}] Mensaje del operador: ${text?.substring(0, 50)}`);
+        }
         if (text) await handleOperatorMessage(tenantId, jid, text);
         continue;
       }
 
       const text = extractText(msg.message);
       const pushName = msg.pushName || "Cliente";
-      console.log(`[WA:${tenantId}] 💬 Mensaje de cliente ${pushName} (${jid}): ${text?.substring(0, 50)}`);
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[WA:${tenantId}] 💬 Mensaje de cliente ${pushName} (${jid}): ${text?.substring(0, 50)}`);
+      }
 
 
       // Mensaje NO de texto (audio, imagen, sticker, etc.) → rechazo amable
@@ -200,14 +217,20 @@ async function _startSocket(tenantId: string, phoneNumber?: string) {
       });
 
       if (session.isPaused) {
-        console.log(`[WA:${tenantId}] ⏸️  Chat ${jid} pausado (humano). Ignorando AI.`);
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[WA:${tenantId}] ⏸️  Chat ${jid} pausado (humano). Ignorando AI.`);
+        }
         continue;
       }
 
-      console.log(`[WA:${tenantId}] 🤖 Llamando a la IA para responder...`);
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[WA:${tenantId}] 🤖 Llamando a la IA para responder...`);
+      }
       try {
         const aiResponse = await handleIncomingMessage(tenantId, jid, text, pushName);
-        console.log(`[WA:${tenantId}] 📤 Respuesta de IA: ${aiResponse?.substring(0, 100)}`);
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[WA:${tenantId}] 📤 Respuesta de IA: ${aiResponse?.substring(0, 100)}`);
+        }
         if (aiResponse) await sendMessage(tenantId, jid, aiResponse);
       } catch (err) {
         console.error(`[WA:${tenantId}] ❌ AI Error para ${jid}:`, err);

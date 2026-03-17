@@ -18,9 +18,8 @@ export async function notifyOrderStatusChange(
   tenantId: string
 ): Promise<void> {
   try {
-    // Buscar el pedido con sus items
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, tenantId },
       include: {
         items: {
           include: {
@@ -95,8 +94,8 @@ export async function notifyPaymentReceived(
   paymentMethod: string
 ): Promise<void> {
   try {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, tenantId },
     });
 
     if (!order || !order.waJid) return;

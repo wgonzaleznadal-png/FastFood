@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Text, Stack, Group, Button, TextInput, Badge, Table, ActionIcon, Modal, Loader, Center, Alert } from '@mantine/core';
-import { IconPhone, IconUser, IconMapPin, IconTrophy, IconPlus, IconEdit, IconTrash, IconSearch } from '@tabler/icons-react';
+import { Card, Text, Stack, Group, Button, TextInput, Textarea, Badge, Table, ActionIcon, Modal, Loader, Center, Alert } from '@mantine/core';
+import { IconPhone, IconUser, IconMapPin, IconTrophy, IconPlus, IconEdit, IconTrash, IconSearch, IconNote } from '@tabler/icons-react';
 import { api, showApiError } from '@/lib/api';
 import { notifications } from '@mantine/notifications';
 import { fmt } from '@/lib/format';
@@ -13,6 +13,7 @@ interface Customer {
   phone: string;
   name: string | null;
   email: string | null;
+  notes: string | null;
   totalOrders: number;
   totalSpent: number;
   lastOrderAt: string | null;
@@ -27,6 +28,7 @@ interface Customer {
     tag: string;
     value: string | null;
   }>;
+  _count?: { orders: number };
 }
 
 export default function ClientesPage() {
@@ -116,7 +118,7 @@ export default function ClientesPage() {
       phone: customer.phone,
       name: customer.name || '',
       email: customer.email || '',
-      notes: '',
+      notes: customer.notes || '',
     });
   };
 
@@ -169,7 +171,7 @@ export default function ClientesPage() {
                   <Table.Th>Contacto</Table.Th>
                   <Table.Th>Pedidos</Table.Th>
                   <Table.Th>Total gastado</Table.Th>
-                  <Table.Th>Fidelización</Table.Th>
+                  <Table.Th>Notas</Table.Th>
                   <Table.Th>Acciones</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -204,19 +206,12 @@ export default function ClientesPage() {
                     <Table.Td>
                       <Text fw={600}>{fmt(customer.totalSpent)}</Text>
                     </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        {customer.tags.slice(0, 2).map((tag) => (
-                          <Badge key={tag.id} color="green" variant="light" size="sm" leftSection={<IconTrophy size={10} />}>
-                            {tag.tag}
-                          </Badge>
-                        ))}
-                        {customer.tags.length > 2 && (
-                          <Badge color="gray" variant="light" size="sm">
-                            +{customer.tags.length - 2}
-                          </Badge>
-                        )}
-                      </Group>
+                    <Table.Td style={{ maxWidth: 200 }}>
+                      {customer.notes ? (
+                        <Text size="xs" c="dimmed" lineClamp={2}><IconNote size={12} style={{ verticalAlign: 'middle' }} /> {customer.notes}</Text>
+                      ) : (
+                        <Text size="xs" c="dimmed">—</Text>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs">
@@ -306,6 +301,14 @@ export default function ClientesPage() {
             type="email"
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.currentTarget.value })}
+          />
+          <Textarea
+            label="Notas del negocio"
+            placeholder="Ej: siempre pide sin sal, paga con cambio justo..."
+            value={formData.notes}
+            onChange={(e) => setFormData({ ...formData, notes: e.currentTarget.value })}
+            autosize
+            minRows={2}
           />
           <Group justify="flex-end" mt="md">
             <Button variant="light" onClick={() => { setEditingCustomer(null); resetForm(); }}>

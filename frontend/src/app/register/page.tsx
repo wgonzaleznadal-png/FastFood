@@ -49,7 +49,7 @@ export default function RegisterPage() {
     setError(null);
     try {
       const res = await api.post("/api/auth/register", data);
-      setAuth(res.data.token, res.data.user, res.data.tenant);
+      setAuth(res.data.token, res.data.user, res.data.tenant, res.data.refreshToken);
       router.push("/dashboard");
     } catch (err) {
       setError(getApiErrorMessage(err, "Error al registrar. Intentá de nuevo."));

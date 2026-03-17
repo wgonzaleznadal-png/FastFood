@@ -1,9 +1,12 @@
 import { Router } from 'express';
-import { authenticate } from '../../middleware/tenantGuard';
+import { authenticate, requireRole } from '../../middleware/tenantGuard';
+import { requireModule } from '../../middleware/moduleGuard';
 import { expensesService } from './expenses.service';
 import { createExpenseSchema, updateExpenseSchema } from './expenses.schema';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireModule("finanzas"));
 
 // ─── EXPENSES ROUTES (UNIFICADO) ─────────────────────────────────────────────
 
@@ -11,7 +14,7 @@ const router = Router();
  * GET /api/expenses
  * Listar egresos con filtros opcionales
  */
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const { shiftId, type, isPaid, startDate, endDate } = req.query;
@@ -34,7 +37,7 @@ router.get('/', authenticate, async (req, res, next) => {
  * GET /api/expenses/:id
  * Obtener egreso por ID
  */
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const expenseId = String(req.params.id);
@@ -50,7 +53,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
  * POST /api/expenses
  * Crear nuevo egreso
  */
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const validatedData = createExpenseSchema.parse(req.body);
@@ -66,7 +69,7 @@ router.post('/', authenticate, async (req, res, next) => {
  * PATCH /api/expenses/:id
  * Actualizar egreso
  */
-router.patch('/:id', authenticate, async (req, res, next) => {
+router.patch('/:id', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const expenseId = String(req.params.id);
@@ -83,7 +86,7 @@ router.patch('/:id', authenticate, async (req, res, next) => {
  * DELETE /api/expenses/:id
  * Eliminar egreso
  */
-router.delete('/:id', authenticate, async (req, res, next) => {
+router.delete('/:id', requireRole("OWNER", "MANAGER"), async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const expenseId = String(req.params.id);
@@ -99,7 +102,7 @@ router.delete('/:id', authenticate, async (req, res, next) => {
  * GET /api/expenses/shift/:shiftId
  * Obtener egresos de un turno
  */
-router.get('/shift/:shiftId', authenticate, async (req, res, next) => {
+router.get('/shift/:shiftId', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const shiftId = String(req.params.shiftId);
@@ -115,7 +118,7 @@ router.get('/shift/:shiftId', authenticate, async (req, res, next) => {
  * GET /api/expenses/type/:type
  * Obtener egresos por tipo
  */
-router.get('/type/:type', authenticate, async (req, res, next) => {
+router.get('/type/:type', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const type = String(req.params.type) as 'CASH' | 'STRUCTURAL' | 'SUPPLIES';
@@ -131,7 +134,7 @@ router.get('/type/:type', authenticate, async (req, res, next) => {
  * GET /api/expenses/total/:type
  * Obtener total de egresos por tipo
  */
-router.get('/total/:type', authenticate, async (req, res, next) => {
+router.get('/total/:type', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const type = String(req.params.type) as 'CASH' | 'STRUCTURAL' | 'SUPPLIES';

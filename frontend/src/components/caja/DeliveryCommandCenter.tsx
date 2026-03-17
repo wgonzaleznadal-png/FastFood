@@ -30,6 +30,7 @@ interface DeliveryOrder {
   cadeteId?: string | null;
   cadete?: { id: string; name: string } | null;
   status: string;
+  isPaid?: boolean;
   totalPrice: string;
   totalAmount: string;
   items: Array<{
@@ -55,15 +56,15 @@ interface CadeteSummary {
 
 interface DeliveryCommandCenterProps {
   shiftId: string;
-  orders: any[]; // Recibe los pedidos del padre (El espejo)
-  // BORRAMOS `cadetes` de acá para que el padre no se queje
+  orders: any[];
   onRefresh: () => void;
+  canAssignAndCollect?: boolean;
 }
 
 const MAP_CONTAINER = { width: "100%", height: "100%" };
 const DEFAULT_CENTER = { lat: -34.6037, lng: -58.3816 }; // Buenos Aires
 
-export default function DeliveryCommandCenter({ shiftId, orders, onRefresh }: DeliveryCommandCenterProps) {
+export default function DeliveryCommandCenter({ shiftId, orders, onRefresh, canAssignAndCollect = true }: DeliveryCommandCenterProps) {
   
   // 1. El Delivery maneja su propia lista de cadetes
   const [cadetes, setCadetes] = useState<Cadete[]>([]);
@@ -182,7 +183,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh }: De
       .filter(o => 
         o.cadeteId === cadeteId && 
         o.paymentMethod === "EFECTIVO" && 
-        o.status !== "PAID" 
+        !o.isPaid
       )
       .reduce((sum, o) => sum + Number(o.totalAmount || o.totalPrice), 0);
   };
@@ -278,13 +279,15 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh }: De
                       <Text size="xs" c="dimmed" lineClamp={1}>{order.deliveryAddress}</Text>
                     </Group>
                   )}
-                  <Select
-                    size="xs"
-                    placeholder="Asignar cadete..."
-                    data={cadetes.map((c) => ({ value: c.id, label: c.name }))}
-                    onChange={(val) => val && handleAssignCadete(order.id, val)}
-                    clearable={false}
-                  />
+                  {canAssignAndCollect && (
+                    <Select
+                      size="xs"
+                      placeholder="Asignar cadete..."
+                      data={cadetes.map((c) => ({ value: c.id, label: c.name }))}
+                      onChange={(val) => val && handleAssignCadete(order.id, val)}
+                      clearable={false}
+                    />
+                  )}
                 </Paper>
               ))
             )}
@@ -296,7 +299,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh }: De
                 </Text>
                 {assignedOrders.map((order) => (
                   <Paper key={order.id} p="sm" radius="md" withBorder style={{ opacity: 0.7 }}>
-                    <Group justify="space-between">
+                    <Group justify="space-between" mb="xs">
                       <Group gap="xs">
                         <Badge size="xs" color="blue">#{order.orderNumber}</Badge>
                         <Text size="sm" fw={600}>{order.customerName}</Text>
@@ -305,6 +308,26 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh }: De
                         {order.cadete?.name}
                       </Badge>
                     </Group>
+                    {canAssignAndCollect && (
+                      <Button
+                        size="compact-xs"
+                        color="green"
+                        variant="light"
+                        fullWidth
+                        leftSection={<IconCheck size={12} />}
+                        onClick={async () => {
+                          try {
+                            await api.patch(`/api/orders/${order.id}/status`, { status: "DELIVERED" });
+                            notifications.show({ title: "Completado", message: `Pedido #${order.orderNumber} entregado al moto`, color: "green" });
+                            onRefresh();
+                          } catch (err) {
+                            showApiError(err, "Error al marcar como completado");
+                          }
+                        }}
+                      >
+                        Completado
+                      </Button>
+                    )}
                   </Paper>
                 ))}
               </>
@@ -318,6 +341,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh }: De
         <ScrollArea type="auto" offsetScrollbars>
           <div className={styles.cadeteCardsRow}>
             {/* Card: Agregar Cadete */}
+            {canAssignAndCollect && (
             <Paper
               className={styles.cadeteCardAdd}
               p="md"
@@ -330,6 +354,7 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh }: De
                 <Text size="xs" c="dimmed" fw={600}>+ Agregar Cadete</Text>
               </Stack>
             </Paper>
+            )}
 
             {/* Cards de cadetes activos */}
             {activeCadetes.map((cadete) => {
@@ -353,16 +378,18 @@ export default function DeliveryCommandCenter({ shiftId, orders, onRefresh }: De
                     {debt === 0 && (
                       <Text size="sm" c="dimmed" ta="center">Sin deuda</Text>
                     )}
-                    <Button
-                      size="xs"
-                      variant="light"
-                      color="orange"
-                      fullWidth
-                      leftSection={<IconReceipt size={14} />}
-                      onClick={() => openRendicionDrawer(cadete)}
-                    >
-                      Cobrar / Detalle
-                    </Button>
+                    {canAssignAndCollect && (
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="orange"
+                        fullWidth
+                        leftSection={<IconReceipt size={14} />}
+                        onClick={() => openRendicionDrawer(cadete)}
+                      >
+                        Cobrar / Detalle
+                      </Button>
+                    )}
                   </Stack>
                 </Paper>
               );

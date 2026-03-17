@@ -1,13 +1,32 @@
 import { Router } from 'express';
-import { authenticate } from '../../middleware/tenantGuard';
+import { z } from 'zod';
+import { authenticate, requireRole } from '../../middleware/tenantGuard';
+import { requireModule } from '../../middleware/moduleGuard';
 import { ordersService } from './orders.service';
 import {
   assignCadeteSchema,
   updateStatusSchema,
   updateCoordsSchema,
+  createOrderInputSchema,
+  updateOrderInputSchema,
 } from './orders.schema';
 
+const updateStatusBodySchema = z.object({
+  status: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  isPaid: z.boolean().optional(),
+  isSentToKitchen: z.boolean().optional(),
+  customerName: z.string().max(100).optional(),
+  isDelivery: z.boolean().optional(),
+  deliveryAddress: z.string().max(500).optional(),
+  deliveryPhone: z.string().max(30).optional(),
+  cancellationNote: z.string().max(500).optional(),
+  items: z.array(z.any()).optional(),
+});
+
 const router = Router();
+router.use(authenticate);
+router.use(requireModule("caja"));
 
 // ─── ORDERS ROUTES (UNIFICADO E HÍBRIDO) ─────────────────────────────────
 
@@ -15,7 +34,7 @@ const router = Router();
  * GET /api/orders
  * Listar órdenes con filtros opcionales
  */
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const { shiftId, status, isDelivery, source, customerId } = req.query;
@@ -38,7 +57,7 @@ router.get('/', authenticate, async (req, res, next) => {
  * GET /api/orders/:id
  * Obtener orden por ID
  */
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const orderId = String(req.params.id);
@@ -54,14 +73,15 @@ router.get('/:id', authenticate, async (req, res, next) => {
  * POST /api/orders
  * Crear nueva orden (HÍBRIDO)
  */
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
-    
-    // FIX HÍBRIDO: Pasamos req.body directo al service. 
-    // Si usamos el schema.parse() estricto, nos borra los campos legacy 
-    // como 'weightKg' o 'cartaItems' antes de que el Service los pueda traducir.
-    const order = await ordersService.createOrder(tenantId, req.body);
+    const validatedBody = createOrderInputSchema.parse(req.body);
+
+    const order = await ordersService.createOrder(tenantId, {
+      ...validatedBody,
+      userId: req.auth!.userId,
+    });
     
     res.status(201).json(order);
   } catch (error) {
@@ -73,20 +93,13 @@ router.post('/', authenticate, async (req, res, next) => {
  * PATCH /api/orders/:id
  * Actualizar orden (HÍBRIDO)
  */
-router.patch('/:id', authenticate, async (req, res, next) => {
+router.patch('/:id', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const orderId = String(req.params.id);
-    
-    console.log('🔥 PATCH /api/orders/:id - orderId:', orderId);
-    console.log('🔥 PATCH /api/orders/:id - req.body:', JSON.stringify(req.body, null, 2));
-    console.log('🔥 PATCH /api/orders/:id - isSentToKitchen:', req.body.isSentToKitchen);
-    
-    // FIX HÍBRIDO: Igual que en el POST, mandamos el payload crudo al Service
-    // para que la lógica híbrida haga su magia sin perder datos en el camino.
-    const order = await ordersService.updateOrder(tenantId, orderId, req.body);
-    
-    console.log('🔥 PATCH /api/orders/:id - order.isSentToKitchen después de update:', order.isSentToKitchen);
+    const validatedBody = updateOrderInputSchema.parse(req.body);
+
+    const order = await ordersService.updateOrder(tenantId, orderId, validatedBody);
     
     res.json(order);
   } catch (error) {
@@ -98,7 +111,7 @@ router.patch('/:id', authenticate, async (req, res, next) => {
  * DELETE /api/orders/:id
  * Eliminar orden
  */
-router.delete('/:id', authenticate, async (req, res, next) => {
+router.delete('/:id', requireRole("OWNER", "MANAGER", "CASHIER"), async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const orderId = String(req.params.id);
@@ -114,7 +127,7 @@ router.delete('/:id', authenticate, async (req, res, next) => {
  * POST /api/orders/:id/kitchen
  * Marcar orden como enviada a cocina
  */
-router.post('/:id/kitchen', authenticate, async (req, res, next) => {
+router.post('/:id/kitchen', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const orderId = String(req.params.id);
@@ -130,16 +143,16 @@ router.post('/:id/kitchen', authenticate, async (req, res, next) => {
  * PATCH /api/orders/:id/status
  * Actualizar estado de orden (con soporte para cobro)
  */
-router.patch('/:id/status', authenticate, async (req, res, next) => {
+router.patch('/:id/status', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const orderId = String(req.params.id);
-    const { status, paymentMethod, isPaid, ...orderData } = req.body;
+    const { status, paymentMethod, isPaid, ...orderData } = updateStatusBodySchema.parse(req.body);
 
     const order = await ordersService.updateStatus(
       tenantId, 
       orderId, 
-      status || undefined, 
+      status ?? "", 
       paymentMethod,
       { ...orderData, isPaid }
     );
@@ -153,7 +166,7 @@ router.patch('/:id/status', authenticate, async (req, res, next) => {
  * PATCH /api/orders/:id/cadete
  * Asignar cadete a orden
  */
-router.patch('/:id/cadete', authenticate, async (req, res, next) => {
+router.patch('/:id/cadete', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const orderId = String(req.params.id);
@@ -170,7 +183,7 @@ router.patch('/:id/cadete', authenticate, async (req, res, next) => {
  * PATCH /api/orders/:id/coords
  * Actualizar coordenadas de entrega
  */
-router.patch('/:id/coords', authenticate, async (req, res, next) => {
+router.patch('/:id/coords', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const orderId = String(req.params.id);
@@ -187,7 +200,7 @@ router.patch('/:id/coords', authenticate, async (req, res, next) => {
  * GET /api/orders/shift/:shiftId/next-number
  * Obtener siguiente número de orden para un shift
  */
-router.get('/shift/:shiftId/next-number', authenticate, async (req, res, next) => {
+router.get('/shift/:shiftId/next-number', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const shiftId = String(req.params.shiftId);
@@ -199,7 +212,7 @@ router.get('/shift/:shiftId/next-number', authenticate, async (req, res, next) =
   }
 });
 
-router.get('/kitchen/stats', authenticate, async (req, res, next) => {
+router.get('/kitchen/stats', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     
@@ -219,7 +232,7 @@ router.get('/kitchen/stats', authenticate, async (req, res, next) => {
  * GET /api/orders/kitchen/list
  * Obtener lista de pedidos activos para una estación (COCINA o BARRA)
  */
-router.get('/kitchen/list', authenticate, async (req, res, next) => {
+router.get('/kitchen/list', async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId;
     const station = String(req.query.station || 'COCINA');

@@ -24,6 +24,7 @@ export const MODULES: ModuleDef[] = [
     submodules: [
       { key: "caja.turnos", label: "Turnos" },
       { key: "caja.pedidos_kg", label: "Pedidos x KG" },
+      { key: "caja.delivery", label: "Delivery" },
       { key: "caja.whatsapp", label: "WhatsApp CRM" },
     ],
   },
@@ -73,10 +74,11 @@ export const ALL_MODULE_KEYS = MODULES.flatMap((m) => [
 
 // Default roles allowed per module (used when seeding a new tenant)
 export const DEFAULT_ROLE_ACCESS: Record<string, string[]> = {
-  dashboard:                    ["OWNER", "MANAGER", "CASHIER", "COOK", "STAFF"],
-  caja:                         ["OWNER", "MANAGER", "CASHIER"],
+  dashboard:                    ["OWNER", "MANAGER", "CASHIER", "COOK", "STAFF", "TELEFONISTA", "ENCARGADO_DELIVERY"],
+  caja:                         ["OWNER", "MANAGER", "CASHIER", "TELEFONISTA", "ENCARGADO_DELIVERY"],
   "caja.turnos":                ["OWNER", "MANAGER", "CASHIER"],
-  "caja.pedidos_kg":            ["OWNER", "MANAGER", "CASHIER"],
+  "caja.pedidos_kg":            ["OWNER", "MANAGER", "CASHIER", "TELEFONISTA"],
+  "caja.delivery":              ["OWNER", "MANAGER", "CASHIER", "ENCARGADO_DELIVERY"],
   "caja.whatsapp":              ["OWNER", "MANAGER", "CASHIER"],
   whatsapp:                     ["OWNER", "MANAGER", "CASHIER"],
   menu:                         ["OWNER", "MANAGER", "CASHIER"],

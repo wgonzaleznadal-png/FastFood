@@ -8,6 +8,7 @@ import Drawer from "@/components/layout/Drawer";
 import {
   IconScale, IconPlus, IconMinus, IconTruck, IconHome, IconCash, IconCheck, IconCreditCard, IconQrcode, IconPrinter, IconTrash, IconX, IconAlertTriangle, IconBrandWhatsapp, IconPencil,
 } from "@tabler/icons-react";
+import { useAuthStore } from "@/store/authStore";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
 import { fmt } from "@/lib/format";
@@ -48,6 +49,7 @@ interface Order {
   createdAt: string;
   notes?: string;
   lastPrintedItems?: any;
+  user?: { id: string; name: string };
   items: Array<{
     id: string;
     productId: string;
@@ -63,13 +65,21 @@ interface KgOrdersModuleProps {
   shiftId: string;
 }
 
+const CAN_LOAD_ORDERS = ["OWNER", "MANAGER", "CASHIER", "TELEFONISTA"];
+const CAN_ASSIGN_AND_COLLECT = ["OWNER", "MANAGER", "CASHIER", "ENCARGADO_DELIVERY"];
+
 export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
+  const { user } = useAuthStore();
+  const canLoadOrders = user && CAN_LOAD_ORDERS.includes(user.role);
+  const canAssignAndCollect = user && CAN_ASSIGN_AND_COLLECT.includes(user.role);
+
   const [activeTab, setActiveTab] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('kgOrdersActiveTab') || "lista_general";
     }
     return "lista_general";
   });
+
   
   const [products, setProducts] = useState<KgProduct[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -81,6 +91,12 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
       localStorage.setItem('kgOrdersActiveTab', activeTab);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (user?.role === "ENCARGADO_DELIVERY" && (activeTab === "lista_general" || activeTab === "whatsapp")) {
+      setActiveTab("delivery");
+    }
+  }, [user?.role, activeTab]);
 
   useEffect(() => {
     fetchOrders();
@@ -118,6 +134,12 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
   const [cartaDrawerOpen, setCartaDrawerOpen] = useState(false);
 
   const [printData, setPrintData] = useState<any>(null);
+
+  // Customer search state
+  const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loadedCustomer, setLoadedCustomer] = useState<any>(null);
+  const phoneSearchTimer = useRef<NodeJS.Timeout | null>(null);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -238,10 +260,62 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
     setDeliveryPhone("");
     setIsDelivery(false);
     setSendToKitchenAfterPay(false);
+    setLoadedCustomer(null);
+    setCustomerSuggestions([]);
+    setShowSuggestions(false);
+  };
+
+  const handlePhoneChange = (value: string) => {
+    setDeliveryPhone(value);
+    // Clear customer data when phone changes
+    if (loadedCustomer) {
+      setCustomerName("");
+      setDeliveryAddress("");
+      setLoadedCustomer(null);
+    }
+    // Progressive search
+    if (phoneSearchTimer.current) clearTimeout(phoneSearchTimer.current);
+    const digits = value.replace(/\D/g, '');
+    if (digits.length >= 3) {
+      phoneSearchTimer.current = setTimeout(async () => {
+        try {
+          const res = await api.get(`/api/customers/search?q=${encodeURIComponent(value)}`);
+          setCustomerSuggestions(res.data || []);
+          setShowSuggestions((res.data || []).length > 0);
+        } catch {
+          setCustomerSuggestions([]);
+          setShowSuggestions(false);
+        }
+      }, 300);
+    } else {
+      setCustomerSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSelectCustomer = (customer: any) => {
+    setLoadedCustomer(customer);
+    setCustomerName(customer.name || "");
+    const defaultAddr = customer.addresses?.find((a: any) => a.isDefault);
+    if (isDelivery && defaultAddr) {
+      setDeliveryAddress(defaultAddr.street || "");
+    }
+    setShowSuggestions(false);
+  };
+
+  const getValidPhone = () => {
+    const digits = (deliveryPhone || '').replace(/\D/g, '');
+    if (digits.length < 8) return undefined;
+    return deliveryPhone.trim();
   };
 
   const handleSubmit = async (action: "save_list" | "save_mp" | "charge_weigh") => {
     if (cart.length === 0 || !customerName.trim()) return;
+
+    if (isDelivery && (!deliveryAddress.trim() || !deliveryPhone.trim())) {
+      notifications.show({ title: "Datos de delivery obligatorios", message: "Completá dirección y teléfono para delivery", color: "red" });
+      return;
+    }
 
     try {
       const hasCartaItems = cart.some(item => item.quantity !== undefined);
@@ -260,13 +334,12 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
       // FIX: Si es "kilaje y cobrar", marcar isSentToKitchen=true desde la creación
       const shouldSendToKitchen = action === "charge_weigh";
       
-      // Crear pedido nuevo (siempre POST en handleSubmit)
       const res = await api.post("/api/orders", {
         shiftId,
         customerName: customerName.trim(),
         isDelivery,
         deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
-        deliveryPhone: isDelivery ? deliveryPhone.trim() : undefined,
+        deliveryPhone: isDelivery ? deliveryPhone.trim() : getValidPhone(),
         items: allItems,
         isSentToKitchen: shouldSendToKitchen,
       });
@@ -448,7 +521,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
         customerName: customerName.trim(),
         isDelivery,
         deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
-        deliveryPhone: isDelivery ? deliveryPhone.trim() : undefined,
+        deliveryPhone: isDelivery ? deliveryPhone.trim() : getValidPhone(),
         items: cart
           .filter(i => (i.weightKg !== undefined && i.weightKg > 0) || (i.quantity !== undefined && i.quantity > 0))
           .map((item) => ({ 
@@ -614,11 +687,18 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
     order.customerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Orden: 1.Pendientes 2.Kilaje sin pagar 3.Deliveries 4.Kilaje pagado (abajo)
+  const getOrderTier = (o: Order) => {
+    if (o.status === "CANCELLED") return 99;
+    if (!o.isSentToKitchen) return 0; // Pendiente
+    if (!o.isPaid) return 1; // Kilaje sin pagar
+    if (o.isDelivery) return 2; // Delivery (pagado)
+    return 3; // Retiro kilaje pagado (abajo)
+  };
   const sortedOrders = [...filteredOrders].sort((a, b) => {
-    const aCompleted = (a.status === "PAID" && a.isSentToKitchen) || a.status === "DELIVERED" || a.status === "CANCELLED";
-    const bCompleted = (b.status === "PAID" && b.isSentToKitchen) || b.status === "DELIVERED" || b.status === "CANCELLED";
-    if (aCompleted && !bCompleted) return 1;
-    if (!aCompleted && bCompleted) return -1;
+    const ta = getOrderTier(a);
+    const tb = getOrderTier(b);
+    if (ta !== tb) return ta - tb;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
@@ -632,19 +712,23 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
     <div className="gd-content">
       <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
         <Tabs.List mb="md">
-          <Tabs.Tab value="lista_general" leftSection={<IconScale size={16} />}>
-            Lista General
-          </Tabs.Tab>
+          {user?.role !== "ENCARGADO_DELIVERY" && (
+            <Tabs.Tab value="lista_general" leftSection={<IconScale size={16} />}>
+              Lista General
+            </Tabs.Tab>
+          )}
           <Tabs.Tab value="delivery" leftSection={<IconTruck size={16} />}>
             Delivery
           </Tabs.Tab>
-          <Tabs.Tab value="whatsapp" leftSection={<IconBrandWhatsapp size={16} />}>
-            WhatsApp
-          </Tabs.Tab>
+          {user?.role !== "ENCARGADO_DELIVERY" && (
+            <Tabs.Tab value="whatsapp" leftSection={<IconBrandWhatsapp size={16} />}>
+              WhatsApp
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="lista_general">
-          <div className={styles.splitLayout}>
+          <div className={styles.splitLayout} style={!canLoadOrders ? { gridTemplateColumns: "1fr" } : undefined}>
             <div className={styles.ordersGrid}>
               <Group justify="space-between" mb="sm">
                 <Text fw={700} size="sm" c="dimmed">LISTA GENERAL</Text>
@@ -668,6 +752,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
               <div>Pedido</div>
               <div>Total</div>
               <div>Estado</div>
+              <div>Cargado por</div>
               <div>Acción</div>
             </div>
             {sortedOrders.map((order) => (
@@ -702,8 +787,11 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
                     {getStatusLabel(order.status)}
                   </Badge>
                 </div>
+                <div onClick={() => handleOrderClick(order)} style={{ cursor: "pointer" }}>
+                  <Text size="xs" c="dimmed">{order.user?.name || "-"}</Text>
+                </div>
                 <div>
-                  {!order.isPaid && order.status !== "CANCELLED" && (
+                  {!order.isPaid && order.status !== "CANCELLED" && canAssignAndCollect && (
                     <Button
                       size="xs"
                       color="green"
@@ -724,6 +812,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
         )}
       </div>
 
+      {canLoadOrders && (
       <div className={styles.orderForm}>
         <Group justify="space-between" mb="sm">
           <Text fw={700} size="sm" c="dimmed">
@@ -764,7 +853,13 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
                 variant={isDelivery ? "filled" : "light"}
                 color="blue"
                 leftSection={<IconTruck size={16} />}
-                onClick={() => setIsDelivery(true)}
+                onClick={() => {
+                  setIsDelivery(true);
+                  if (loadedCustomer && !deliveryAddress) {
+                    const defaultAddr = loadedCustomer.addresses?.find((a: any) => a.isDefault);
+                    if (defaultAddr) setDeliveryAddress(defaultAddr.street || "");
+                  }
+                }}
                 disabled={!!editingOrder}
               >
                 Delivery
@@ -782,6 +877,62 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
             )}
           </Group>
 
+          {/* TELÉFONO con búsqueda progresiva */}
+          <div style={{ position: "relative" }}>
+            <TextInput
+              placeholder={isDelivery ? "Teléfono — 379..." : "Teléfono (opcional) — 379..."}
+              value={deliveryPhone}
+              onChange={(e) => handlePhoneChange(e.currentTarget.value)}
+              onFocus={() => {
+                if (!deliveryPhone && !isInputLocked) {
+                  setDeliveryPhone("379");
+                  handlePhoneChange("379");
+                }
+                if (customerSuggestions.length > 0) setShowSuggestions(true);
+              }}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              required={isDelivery}
+              disabled={isInputLocked}
+            />
+            {showSuggestions && customerSuggestions.length > 0 && (
+              <Paper
+                shadow="md"
+                withBorder
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  zIndex: 100,
+                  maxHeight: 220,
+                  overflowY: "auto",
+                }}
+              >
+                {customerSuggestions.map((c) => {
+                  const defaultAddr = c.addresses?.find((a: any) => a.isDefault);
+                  return (
+                    <div
+                      key={c.id}
+                      style={{
+                        padding: "8px 12px",
+                        cursor: "pointer",
+                        borderBottom: "1px solid var(--mantine-color-gray-2)",
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setDeliveryPhone(c.phone);
+                        handleSelectCustomer(c);
+                      }}
+                    >
+                      <Text size="sm" fw={600}>{c.name || "Sin nombre"}</Text>
+                      <Text size="xs" c="dimmed">{c.phone}{defaultAddr ? ` · ${defaultAddr.street}` : ""}</Text>
+                    </div>
+                  );
+                })}
+              </Paper>
+            )}
+          </div>
+
           <TextInput
             placeholder="Nombre del cliente"
             value={customerName}
@@ -791,26 +942,25 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
           />
 
           {isDelivery && (
-            <>
-              <TextInput
-                placeholder="Dirección de entrega"
-                value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.currentTarget.value)}
-                required
-                disabled={isInputLocked}
-              />
-              <TextInput
-                placeholder="Teléfono de contacto"
-                value={deliveryPhone}
-                onChange={(e) => setDeliveryPhone(e.currentTarget.value)}
-                required
-                disabled={isInputLocked}
-              />
-              
-              {deliveryPhone && deliveryPhone.length >= 8 && (
-                <CustomerCard phone={deliveryPhone} />
-              )}
-            </>
+            <TextInput
+              placeholder="Dirección de entrega"
+              value={deliveryAddress}
+              onChange={(e) => setDeliveryAddress(e.currentTarget.value)}
+              required
+              disabled={isInputLocked}
+            />
+          )}
+
+          {/* CustomerCard con datos de fidelización */}
+          {loadedCustomer && (
+            <CustomerCard
+              customer={loadedCustomer}
+              isDelivery={isDelivery}
+              onAutoFill={(data) => {
+                if (data.name) setCustomerName(data.name);
+                if (data.address && isDelivery) setDeliveryAddress(data.address);
+              }}
+            />
           )}
 
           <Divider label="Productos" labelPosition="center" />
@@ -1063,16 +1213,18 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
                   customerName: customerName.trim(),
                   isDelivery,
                   deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
-                  deliveryPhone: isDelivery ? deliveryPhone.trim() : undefined,
-                  items: allItems,
-                  isSentToKitchen: true,
+        deliveryPhone: isDelivery ? deliveryPhone.trim() : getValidPhone(),
+        items: allItems,
+        isSentToKitchen: true,
                 });
                 
                 if (res.data) {
-                  // Solo imprimir COCINA/BARRA si el backend detectó ADICIÓN real
-                  // (items nuevos vs lastPrintedItems). Si no hay adición, solo KILAJE.
-                  const mode = res.data.isAddition ? "KILAJE_AND_STATIONS" : "KILAJE_ONLY";
-                  triggerPrint(res.data, mode);
+                  const hasNewCartaItems = res.data.isAddition && (res.data.items || []).some((i: any) => i.unitType !== "KG");
+                  if (hasNewCartaItems) {
+                    triggerPrint(res.data, "KILAJE_AND_STATIONS");
+                  } else {
+                    triggerPrint(res.data, "KILAJE_ONLY");
+                  }
                   
                   // FIX: Usar res.data directamente (ya tiene isSentToKitchen=true)
                   setEditingOrder(res.data);
@@ -1089,13 +1241,82 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
               {/* PEDIDO NO PAGADO */}
               {!editingOrder.isPaid && editingOrder.status !== "CANCELLED" && (
                 <>
-                  {/* Botón COBRAR - Siempre disponible si no está pagado */}
+                  {/* Botón GUARDAR - Guarda cambios + imprime comandas cocina de items nuevos */}
+                  <Button
+                    color="orange"
+                    fullWidth
+                    onClick={async () => {
+                      try {
+                        const allItems = cart
+                          .filter(i => (i.weightKg !== undefined && i.weightKg > 0) || (i.quantity !== undefined && i.quantity > 0))
+                          .map(i => ({
+                            productId: i.productId,
+                            weightKg: i.weightKg !== undefined ? i.weightKg : undefined,
+                            quantity: i.quantity !== undefined ? i.quantity : undefined,
+                            notes: itemNotes[i.productId || ''] || undefined
+                          }));
+
+                        const res = await api.patch(`/api/orders/${editingOrder!.id}`, {
+                          customerName: customerName.trim(),
+                          isDelivery,
+                          deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
+                          deliveryPhone: isDelivery ? deliveryPhone.trim() : getValidPhone(),
+                          items: allItems,
+                        });
+
+                        if (res.data) {
+                          if (res.data.isAddition) {
+                            const hasNewCarta = (res.data.addedItems || []).some((i: any) => i.unitType !== "KG");
+                            if (hasNewCarta) triggerPrint(res.data, "STATIONS_ONLY");
+                          }
+                          setEditingOrder(res.data);
+                          await fetchOrders();
+                          notifications.show({ title: "Guardado", message: "Pedido actualizado", color: "green" });
+                        }
+                      } catch (err) {
+                        showApiError(err, "Error al guardar");
+                      }
+                    }}
+                  >
+                    Guardar cambios
+                  </Button>
+
+                  {/* Botón COBRAR - Guarda + imprime comandas nuevas + abre drawer */}
                   <Button
                     color="green"
                     fullWidth
                     leftSection={<IconCash size={16} />}
-                    onClick={() => {
-                      openPaymentDrawer(editingOrder!.id, total);
+                    onClick={async () => {
+                      try {
+                        const allItems = cart
+                          .filter(i => (i.weightKg !== undefined && i.weightKg > 0) || (i.quantity !== undefined && i.quantity > 0))
+                          .map(i => ({
+                            productId: i.productId,
+                            weightKg: i.weightKg !== undefined ? i.weightKg : undefined,
+                            quantity: i.quantity !== undefined ? i.quantity : undefined,
+                            notes: itemNotes[i.productId || ''] || undefined
+                          }));
+
+                        const res = await api.patch(`/api/orders/${editingOrder!.id}`, {
+                          customerName: customerName.trim(),
+                          isDelivery,
+                          deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
+                          deliveryPhone: isDelivery ? deliveryPhone.trim() : getValidPhone(),
+                          items: allItems,
+                        });
+
+                        if (res.data) {
+                          if (res.data.isAddition) {
+                            const hasNewCarta = (res.data.addedItems || []).some((i: any) => i.unitType !== "KG");
+                            if (hasNewCarta) triggerPrint(res.data, "STATIONS_ONLY");
+                          }
+                          setEditingOrder(res.data);
+                          await fetchOrders();
+                          openPaymentDrawer(res.data.id, Number(res.data.totalAmount || res.data.totalPrice || total));
+                        }
+                      } catch (err) {
+                        showApiError(err, "Error al guardar y cobrar");
+                      }
                     }}
                   >
                     Cobrar
@@ -1208,6 +1429,7 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
           })()}
         </Stack>
       </div>
+      )}
 
       <Drawer
         opened={paymentDrawerOpen}
@@ -1415,7 +1637,8 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
           <DeliveryCommandCenter 
             shiftId={shiftId} 
             orders={orders as any} 
-            onRefresh={fetchOrders} 
+            onRefresh={fetchOrders}
+            canAssignAndCollect={canAssignAndCollect}
           />
         </Tabs.Panel>
 

@@ -4,14 +4,18 @@ import { useEffect, useState } from "react";
 import {
   Paper, Text, Stack, Group, ThemeIcon, Tabs, Badge, Switch,
   Button, Select, Table, Loader, Center, Alert, MultiSelect,
-  Accordion, Divider,
+  Accordion, Divider, Modal, TextInput, PasswordInput,
 } from "@mantine/core";
 import {
   IconSettings, IconUsers, IconShieldLock,
-  IconAlertTriangle, IconCircleCheck, IconBuilding,
+  IconAlertTriangle, IconCircleCheck, IconBuilding, IconLock,
 } from "@tabler/icons-react";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
+import { IconPlus } from "@tabler/icons-react";
 import styles from "./configuracion.module.css";
 
 const ROLE_OPTIONS = [
@@ -20,11 +24,21 @@ const ROLE_OPTIONS = [
   { value: "CASHIER", label: "Cajero" },
   { value: "COOK",    label: "Cocinero" },
   { value: "STAFF",   label: "Personal" },
+  { value: "TELEFONISTA", label: "Telefonista" },
+  { value: "ENCARGADO_DELIVERY", label: "Encargado Delivery" },
 ];
 
 const ROLE_COLORS: Record<string, string> = {
   OWNER: "orange", MANAGER: "blue", CASHIER: "green", COOK: "grape", STAFF: "gray",
+  TELEFONISTA: "cyan", ENCARGADO_DELIVERY: "teal",
 };
+
+const createUserSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(6),
+  role: z.string().min(1),
+});
 
 interface PermissionEntry {
   key: string;
@@ -63,25 +77,64 @@ interface UserEntry {
   isActive: boolean;
 }
 
+type CreateUserForm = z.infer<typeof createUserSchema>;
+
 export default function ConfiguracionPage() {
   const [permissions, setPermissions] = useState<PermissionEntry[]>([]);
   const [users, setUsers] = useState<UserEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  const [hasPin, setHasPin] = useState(false);
+  const [pinValue, setPinValue] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [savingPin, setSavingPin] = useState(false);
+
+  const createForm = useForm<CreateUserForm>({
+    resolver: zodResolver(createUserSchema),
+    defaultValues: { name: "", email: "", password: "", role: "STAFF" },
+  });
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [permsRes, usersRes] = await Promise.all([
+      const [permsRes, usersRes, pinRes] = await Promise.all([
         api.get("/api/config/permissions"),
         api.get("/api/config/users"),
+        api.get("/api/config/admin-pin"),
       ]);
       setPermissions(permsRes.data);
       setUsers(usersRes.data);
+      setHasPin(pinRes.data.hasPin);
     } catch (err) {
       showApiError(err, "No se pudieron cargar los datos");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSavePin = async () => {
+    if (pinValue.length < 4 || pinValue.length > 6) {
+      notifications.show({ title: "Error", message: "El PIN debe tener entre 4 y 6 dígitos", color: "red" });
+      return;
+    }
+    if (pinValue !== pinConfirm) {
+      notifications.show({ title: "Error", message: "Los PIN no coinciden", color: "red" });
+      return;
+    }
+    setSavingPin(true);
+    try {
+      await api.post("/api/config/admin-pin", { pin: pinValue });
+      setHasPin(true);
+      setPinValue("");
+      setPinConfirm("");
+      notifications.show({ title: "PIN guardado", message: "El PIN de administrador fue configurado", color: "green" });
+    } catch (err) {
+      showApiError(err, "Error al guardar PIN");
+    } finally {
+      setSavingPin(false);
     }
   };
 
@@ -157,6 +210,21 @@ export default function ConfiguracionPage() {
     }
   };
 
+  const handleCreateUser = async (data: CreateUserForm) => {
+    setCreating(true);
+    try {
+      await api.post("/api/config/users", data);
+      notifications.show({ title: "Usuario creado", message: `${data.name} puede iniciar sesión con su email`, color: "green" });
+      setCreateModalOpen(false);
+      createForm.reset();
+      fetchData();
+    } catch (err) {
+      showApiError(err, "No se pudo crear el usuario");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (loading) {
     return <Center h={300}><Loader color="orange" /></Center>;
   }
@@ -199,6 +267,9 @@ export default function ConfiguracionPage() {
           </Tabs.Tab>
           <Tabs.Tab value="negocio" leftSection={<IconBuilding size={16} />}>
             Datos del Negocio
+          </Tabs.Tab>
+          <Tabs.Tab value="seguridad" leftSection={<IconLock size={16} />}>
+            Seguridad
           </Tabs.Tab>
         </Tabs.List>
 
@@ -279,6 +350,12 @@ export default function ConfiguracionPage() {
 
         {/* ── Usuarios Tab ── */}
         <Tabs.Panel value="usuarios" pt="lg">
+          <Group justify="space-between" mb="md">
+            <Text size="sm" c="dimmed">Usuarios del negocio</Text>
+            <Button leftSection={<IconPlus size={16} />} color="orange" size="xs" onClick={() => setCreateModalOpen(true)}>
+              Nuevo usuario
+            </Button>
+          </Group>
           {!users.length ? (
             <Alert icon={<IconAlertTriangle size={16} />} color="gray" radius="md">
               No hay usuarios registrados.
@@ -335,6 +412,21 @@ export default function ConfiguracionPage() {
           )}
         </Tabs.Panel>
 
+        <Modal opened={createModalOpen} onClose={() => setCreateModalOpen(false)} title="Nuevo usuario" size="sm">
+          <form onSubmit={createForm.handleSubmit(handleCreateUser)}>
+            <Stack gap="md">
+              <TextInput label="Nombre" placeholder="Juan Pérez" required {...createForm.register("name")} error={createForm.formState.errors.name?.message} />
+              <TextInput label="Email" placeholder="juan@ejemplo.com" type="email" required {...createForm.register("email")} error={createForm.formState.errors.email?.message} />
+              <PasswordInput label="Contraseña" placeholder="Mínimo 6 caracteres" required {...createForm.register("password")} error={createForm.formState.errors.password?.message} />
+              <Select label="Rol" data={ROLE_OPTIONS} value={createForm.watch("role")} onChange={(v) => v && createForm.setValue("role", v)} error={createForm.formState.errors.role?.message} />
+              <Group justify="flex-end" gap="xs">
+                <Button variant="subtle" onClick={() => setCreateModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" color="orange" loading={creating}>Crear</Button>
+              </Group>
+            </Stack>
+          </form>
+        </Modal>
+
         {/* ── Negocio Tab ── */}
         <Tabs.Panel value="negocio" pt="lg">
           <Paper className="gd-card" maw={480}>
@@ -355,6 +447,60 @@ export default function ConfiguracionPage() {
                   estará disponible en el próximo sprint de Configuración.
                 </Text>
               </Alert>
+            </Stack>
+          </Paper>
+        </Tabs.Panel>
+
+        {/* ── Seguridad Tab ── */}
+        <Tabs.Panel value="seguridad" pt="lg">
+          <Paper className="gd-card" p="md" maw={480}>
+            <Stack gap="md">
+              <Group gap="sm">
+                <ThemeIcon color="orange" variant="light" size="lg" radius="md">
+                  <IconLock size={20} />
+                </ThemeIcon>
+                <div>
+                  <Text fw={700} size="md">PIN de Administrador</Text>
+                  <Text size="sm" c="dimmed">Se pide para cancelar pedidos cobrados</Text>
+                </div>
+              </Group>
+
+              <Divider />
+
+              {hasPin && (
+                <Alert color="green" variant="light" radius="md">
+                  <Text size="sm" fw={600}>PIN configurado. Podés cambiarlo ingresando uno nuevo.</Text>
+                </Alert>
+              )}
+
+              {!hasPin && (
+                <Alert color="red" variant="light" radius="md">
+                  <Text size="sm" fw={600}>No hay PIN configurado. Configurá uno para proteger cancelaciones.</Text>
+                </Alert>
+              )}
+
+              <PasswordInput
+                label={hasPin ? "Nuevo PIN" : "PIN"}
+                placeholder="4-6 dígitos"
+                value={pinValue}
+                onChange={(e) => setPinValue(e.currentTarget.value.replace(/\D/g, "").slice(0, 6))}
+                maxLength={6}
+              />
+              <PasswordInput
+                label="Confirmar PIN"
+                placeholder="Repetí el PIN"
+                value={pinConfirm}
+                onChange={(e) => setPinConfirm(e.currentTarget.value.replace(/\D/g, "").slice(0, 6))}
+                maxLength={6}
+              />
+              <Button
+                color="orange"
+                onClick={handleSavePin}
+                loading={savingPin}
+                disabled={pinValue.length < 4 || pinValue !== pinConfirm}
+              >
+                {hasPin ? "Cambiar PIN" : "Guardar PIN"}
+              </Button>
             </Stack>
           </Paper>
         </Tabs.Panel>

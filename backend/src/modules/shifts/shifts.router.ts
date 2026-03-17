@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { authenticate, requireRole } from "@/middleware/tenantGuard";
 import { requireModule } from "@/middleware/moduleGuard";
 import {
@@ -38,11 +39,14 @@ router.use(requireModule("caja"));
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/shifts/me — get my active open shift
-router.get("/me", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/me", async (req: Request, res: Response) => {
   try {
     const shift = await getMyActiveShift(req.auth!.tenantId, req.auth!.userId);
     res.json(shift ?? null);
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error("[shifts/me]", err);
+    res.json(null);
+  }
 });
 
 // GET /api/shifts — list all shifts (OWNER/MANAGER only)
@@ -66,7 +70,15 @@ router.post("/open", async (req: Request, res: Response, next: NextFunction) => 
     const input = openShiftSchema.parse(req.body);
     const shift = await openShift(req.auth!.tenantId, req.auth!.userId, input);
     res.status(201).json(shift);
-  } catch (err) { next(err); }
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; name?: string };
+    if (e?.statusCode && e.statusCode !== 500) next(err);
+    else if (e?.name === "ZodError") res.status(400).json({ error: "Datos inválidos" });
+    else {
+      console.error("[shifts/open]", err);
+      res.status(503).json({ error: "Error de conexión. Verificá que la base de datos esté activa." });
+    }
+  }
 });
 
 // ─── CASH EXPENSES (static prefix: /expenses) ──────────────────────────────
@@ -108,7 +120,7 @@ router.post("/cadetes", async (req: Request, res: Response, next: NextFunction) 
 });
 
 // DELETE /api/shifts/cadetes/:id — soft delete cadete
-router.delete("/cadetes/:id", async (req: Request, res: Response, next: NextFunction) => {
+router.delete("/cadetes/:id", requireRole("OWNER", "MANAGER"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     await deleteCadete(req.auth!.tenantId, String(req.params.id));
     res.status(204).send();
@@ -134,9 +146,14 @@ router.patch("/orders/:id/render", async (req: Request, res: Response, next: Nex
 });
 
 // PATCH /api/shifts/orders/:id/coords
+const coordsSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+});
+
 router.patch("/orders/:id/coords", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { lat, lng } = req.body;
+    const { lat, lng } = coordsSchema.parse(req.body);
     res.json(await updateOrderCoords(req.auth!.tenantId, String(req.params.id), lat, lng));
   } catch (err) { next(err); }
 });
@@ -162,7 +179,10 @@ router.get("/:id/summary", async (req: Request, res: Response, next: NextFunctio
       req.auth!.tenantId, String(req.params.id), req.auth!.userId, req.auth!.role
     );
     res.json(summary);
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error("[shifts/:id/summary]", err);
+    res.json({ shift: null, totalSales: 0, totalExpenses: 0, paymentMethods: [] });
+  }
 });
 
 // POST /api/shifts/:id/close
@@ -173,7 +193,14 @@ router.post("/:id/close", async (req: Request, res: Response, next: NextFunction
       req.auth!.tenantId, req.auth!.userId, String(req.params.id), input, req.auth!.role
     );
     res.json(shift);
-  } catch (err) { next(err); }
+  } catch (err: any) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[close] FAILED:", err?.message);
+    }
+    res.status(err?.statusCode || 500).json({
+      error: err?.message || "Error desconocido al cerrar turno",
+    });
+  }
 });
 
 // GET /api/shifts/:id/expenses
@@ -181,7 +208,10 @@ router.get("/:id/expenses", async (req: Request, res: Response, next: NextFuncti
   try {
     const expenses = await listCashExpenses(req.auth!.tenantId, String(req.params.id));
     res.json(expenses);
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error("[shifts/:id/expenses]", err);
+    res.json([]);
+  }
 });
 
 // GET /api/shifts/:id/collaborators

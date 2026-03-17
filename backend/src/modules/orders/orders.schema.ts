@@ -58,8 +58,54 @@ export const updateStatusSchema = z.object({
 });
 
 export const updateCoordsSchema = z.object({
-  deliveryLat: z.number(),
-  deliveryLng: z.number(),
+  deliveryLat: z.number().min(-90).max(90),
+  deliveryLng: z.number().min(-180).max(180),
+});
+
+export const createOrderInputSchema = z.object({
+  shiftId: z.string().min(1),
+  customerName: z.string().min(1).max(100),
+  isDelivery: z.boolean().default(false),
+  deliveryAddress: z.string().max(500).optional(),
+  deliveryPhone: z.string().max(30).optional(),
+  source: z.enum(["LOCAL", "WHATSAPP"]).default("LOCAL"),
+  customerId: z.string().min(1).optional(),
+  waJid: z.string().optional(),
+  notes: z.string().max(1000).optional(),
+  paymentMethod: z.string().optional(),
+  isSentToKitchen: z.boolean().optional(),
+  items: z.array(z.object({
+    productId: z.string().min(1),
+    quantity: z.number().positive().optional(),
+    weightKg: z.number().positive().optional(),
+    notes: z.string().max(500).optional(),
+  })).min(1),
+  cartaItems: z.array(z.object({
+    productId: z.string().min(1),
+    quantity: z.number().int().positive(),
+    notes: z.string().max(500).optional(),
+  })).optional(),
+});
+
+export const updateOrderInputSchema = z.object({
+  customerName: z.string().min(1).max(100).optional(),
+  isDelivery: z.boolean().optional(),
+  deliveryAddress: z.string().max(500).optional(),
+  deliveryPhone: z.string().max(30).optional(),
+  notes: z.string().max(1000).optional(),
+  isSentToKitchen: z.boolean().optional(),
+  paymentMethod: z.string().optional(),
+  items: z.array(z.object({
+    productId: z.string().min(1),
+    quantity: z.number().positive().optional(),
+    weightKg: z.number().positive().optional(),
+    notes: z.string().max(500).optional(),
+  })).optional(),
+  cartaItems: z.array(z.object({
+    productId: z.string().min(1),
+    quantity: z.number().int().positive(),
+    notes: z.string().max(500).optional(),
+  })).optional(),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

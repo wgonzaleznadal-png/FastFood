@@ -4,14 +4,15 @@ import { useEffect, useState } from "react";
 import {
   Paper, Text, Stack, Group, ThemeIcon, SimpleGrid, Tabs,
   Badge, Button, Select, NumberInput, Textarea, TextInput,
-  Table, Loader, Center, Alert, Progress, Grid,
+  Table, Loader, Center, Alert, Progress, Grid, Divider, ScrollArea,
 } from "@mantine/core";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
 import {
   IconReportMoney, IconTrendingUp, IconTrendingDown,
   IconPlus, IconCircleCheck, IconAlertTriangle,
-  IconReceipt, IconScale, IconMotorbike, IconBuildingStore, IconWallet
+  IconReceipt, IconScale, IconMotorbike, IconBuildingStore, IconWallet,
+  IconCash, IconTruck, IconEye,
 } from "@tabler/icons-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -97,6 +98,20 @@ const expenseSchema = z.object({
 type ExpenseForm = z.infer<typeof expenseSchema>;
 
 // ─── Component ──────────────────────────────────────────────────────────────
+interface ShiftDetail {
+  shift: any;
+  totalSales: number;
+  totalExpenses: number;
+  paymentMethods: Array<{ id: string; name: string; amount: number }>;
+  orders: Array<{ id: string; orderNumber: number; customerName: string; totalPrice: string; paymentMethod: string; isPaid: boolean; isDelivery: boolean; status: string; createdAt: string; items?: Array<{ id: string; productName: string; quantity: number; unitType: string; unitPrice: number; subtotal: number }> }>;
+  expenses: Array<{ id: string; description: string; amount: number; notes: string | null; createdAt: string }>;
+  counts: { total: number; paid: number; cancelled: number; delivery: number; local: number };
+  cashSalesLocal: number;
+  cashSalesDelivery: number;
+  productSummary?: Array<{ name: string; kg: number; units: number; revenue: number }>;
+  totalVolumeKg?: number;
+}
+
 export default function FinanzasPage() {
   const [consolidator, setConsolidator] = useState<ConsolidatorData | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -108,6 +123,23 @@ export default function FinanzasPage() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
+
+  const [shiftDetailOpen, setShiftDetailOpen] = useState(false);
+  const [shiftDetail, setShiftDetail] = useState<ShiftDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const openShiftDetail = async (shiftId: string) => {
+    setShiftDetailOpen(true);
+    setLoadingDetail(true);
+    try {
+      const res = await api.get(`/api/shifts/${shiftId}/summary`);
+      setShiftDetail(res.data);
+    } catch (err) {
+      showApiError(err, "Error al cargar detalle del turno");
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
 
   const form = useForm<ExpenseForm>({ resolver: zodResolver(expenseSchema) });
 
@@ -280,7 +312,19 @@ export default function FinanzasPage() {
                 </Text>
                 <Text size="lg" fw={600} c="dimmed" pb={4}>Kg</Text>
               </Group>
-              <Text size="xs" c="dimmed" mt={4}>Despachados desde cocina</Text>
+              {summary?.kpis?.volumeByProduct && Object.keys(summary.kpis.volumeByProduct).length > 0 && (
+                <Stack gap={4} mt="sm">
+                  {Object.entries(summary.kpis.volumeByProduct as Record<string, number>)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([name, kg]) => (
+                      <Group key={name} justify="space-between">
+                        <Text size="xs" c="dimmed">{name}</Text>
+                        <Text size="xs" fw={600}>{Number(kg).toLocaleString("es-AR", { maximumFractionDigits: 1 })} Kg</Text>
+                      </Group>
+                    ))
+                  }
+                </Stack>
+              )}
             </Paper>
 
             {/* RENDIMIENTO DE CANALES */}
@@ -374,7 +418,7 @@ export default function FinanzasPage() {
                 </Table.Thead>
                 <Table.Tbody>
                   {consolidator.shifts.map((shift) => (
-                    <Table.Tr key={shift.id}>
+                    <Table.Tr key={shift.id} style={{ cursor: "pointer" }} onClick={() => openShiftDetail(shift.id)}>
                       <Table.Td fw={600}>{shift.openedBy?.name ?? "—"}</Table.Td>
                       <Table.Td>
                         {new Date(shift.openedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
@@ -403,6 +447,233 @@ export default function FinanzasPage() {
           )}
         </Stack>
       )}
+
+      {/* ── DRAWER: DETALLE DE TURNO ── */}
+      <Drawer
+        opened={shiftDetailOpen}
+        onClose={() => { setShiftDetailOpen(false); setShiftDetail(null); }}
+        title="Detalle del Turno"
+        size="lg"
+      >
+        {loadingDetail ? (
+          <Center h={200}><Loader color="orange" /></Center>
+        ) : shiftDetail ? (
+          <ScrollArea h="calc(100vh - 120px)" offsetScrollbars>
+            <Stack gap="md">
+              {/* Header */}
+              <Group justify="space-between">
+                <Text size="sm">Cajero: <Text span fw={700}>{shiftDetail.shift?.openedBy?.name ?? "—"}</Text></Text>
+                <Badge color={shiftDetail.shift?.status === "CLOSED" ? "gray" : "green"} variant="light">
+                  {shiftDetail.shift?.status === "CLOSED" ? "Cerrado" : "Abierto"}
+                </Badge>
+              </Group>
+              <Group gap="xl">
+                <Text size="sm" c="dimmed">
+                  Apertura: {shiftDetail.shift?.openedAt ? new Date(shiftDetail.shift.openedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Cierre: {shiftDetail.shift?.closedAt ? new Date(shiftDetail.shift.closedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                </Text>
+              </Group>
+
+              <Divider />
+
+              {/* Resumen de pedidos */}
+              <Paper p="md" radius="md" withBorder>
+                <Text size="sm" fw={700} mb="xs">Resumen de Pedidos</Text>
+                <SimpleGrid cols={2} spacing="xs">
+                  <Group gap="xs"><Text size="sm" c="dimmed">Total:</Text><Text size="sm" fw={700}>{shiftDetail.counts.total}</Text></Group>
+                  <Group gap="xs"><Text size="sm" c="dimmed">Cobrados:</Text><Text size="sm" fw={700} c="green">{shiftDetail.counts.paid}</Text></Group>
+                  <Group gap="xs"><Text size="sm" c="dimmed">Retiro:</Text><Text size="sm" fw={600}>{shiftDetail.counts.local}</Text></Group>
+                  <Group gap="xs"><Text size="sm" c="dimmed">Delivery:</Text><Text size="sm" fw={600}>{shiftDetail.counts.delivery}</Text></Group>
+                  {shiftDetail.counts.cancelled > 0 && (
+                    <Group gap="xs"><Text size="sm" c="dimmed">Cancelados:</Text><Text size="sm" fw={600} c="red">{shiftDetail.counts.cancelled}</Text></Group>
+                  )}
+                </SimpleGrid>
+              </Paper>
+
+              {/* Ventas por método */}
+              <div>
+                <Text size="sm" fw={700} mb="xs">Ventas por Método de Pago</Text>
+                <Stack gap={4}>
+                  {shiftDetail.paymentMethods.map((pm) => (
+                    <Group key={pm.id} justify="space-between" p="xs" style={{ background: "var(--gd-bg-secondary)", borderRadius: "6px" }}>
+                      <Text size="sm">{pm.name}</Text>
+                      <Text size="sm" fw={600}>{fmt(pm.amount)}</Text>
+                    </Group>
+                  ))}
+                  <Group justify="flex-end" mt={4}>
+                    <Text size="sm" fw={700}>Total Ventas: <Text span c="green" fw={700}>{fmt(shiftDetail.totalSales)}</Text></Text>
+                  </Group>
+                </Stack>
+              </div>
+
+              <Divider />
+
+              {/* Egresos */}
+              {shiftDetail.expenses.length > 0 && (
+                <>
+                  <div>
+                    <Text size="sm" fw={700} mb="xs">Egresos de Caja Chica</Text>
+                    <Stack gap={4}>
+                      {shiftDetail.expenses.map((exp) => (
+                        <Group key={exp.id} justify="space-between" p="xs" style={{ background: "var(--gd-bg-secondary)", borderRadius: "6px" }}>
+                          <Stack gap={0}>
+                            <Text size="sm">{exp.description}</Text>
+                            {exp.notes && <Text size="xs" c="dimmed">{exp.notes}</Text>}
+                          </Stack>
+                          <Text size="sm" fw={600} c="red">-{fmt(exp.amount)}</Text>
+                        </Group>
+                      ))}
+                      <Group justify="flex-end" mt={4}>
+                        <Text size="sm" fw={700}>Total Egresos: <Text span c="red" fw={700}>-{fmt(shiftDetail.totalExpenses)}</Text></Text>
+                      </Group>
+                    </Stack>
+                  </div>
+                  <Divider />
+                </>
+              )}
+
+              {/* Rendición Delivery */}
+              {shiftDetail.shift?.deliverySettlementAmount && Number(shiftDetail.shift.deliverySettlementAmount) > 0 && (
+                <>
+                  <Paper p="md" radius="md" style={{ background: "rgba(59, 130, 246, 0.05)", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                    <Group gap="xs" mb="xs">
+                      <IconTruck size={16} color="#3b82f6" />
+                      <Text size="sm" fw={700}>Rendición Delivery</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">Encargado: <Text span fw={600}>{shiftDetail.shift.deliverySettlementBy || "—"}</Text></Text>
+                      <Text size="sm" fw={700} c="blue">{fmt(Number(shiftDetail.shift.deliverySettlementAmount))}</Text>
+                    </Group>
+                  </Paper>
+                  <Divider />
+                </>
+              )}
+
+              {/* Cuadre de caja */}
+              {shiftDetail.shift?.status === "CLOSED" && (
+                <Paper p="md" radius="md" withBorder>
+                  <Text size="sm" fw={700} mb="sm">Cuadre de Caja</Text>
+                  <Stack gap={4}>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">Caja Inicial</Text>
+                      <Text size="sm" fw={600}>{fmt(Number(shiftDetail.shift.initialCash))}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">+ Efectivo Local</Text>
+                      <Text size="sm" fw={600} c="green">{fmt(shiftDetail.cashSalesLocal ?? 0)}</Text>
+                    </Group>
+                    {shiftDetail.totalExpenses > 0 && (
+                      <Group justify="space-between">
+                        <Text size="sm" c="dimmed">− Egresos</Text>
+                        <Text size="sm" fw={600} c="red">-{fmt(shiftDetail.totalExpenses)}</Text>
+                      </Group>
+                    )}
+                    {shiftDetail.shift.deliverySettlementAmount && Number(shiftDetail.shift.deliverySettlementAmount) > 0 && (
+                      <Group justify="space-between">
+                        <Text size="sm" c="dimmed">+ Rendición Delivery</Text>
+                        <Text size="sm" fw={600} c="blue">{fmt(Number(shiftDetail.shift.deliverySettlementAmount))}</Text>
+                      </Group>
+                    )}
+                    <Divider my={4} />
+                    <Group justify="space-between">
+                      <Text size="sm" fw={700}>Esperado</Text>
+                      <Text size="sm" fw={700} c="orange">{fmt(Number(shiftDetail.shift.expectedCash))}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="sm" fw={700}>Contado</Text>
+                      <Text size="sm" fw={700}>{fmt(Number(shiftDetail.shift.finalCash))}</Text>
+                    </Group>
+                    <Divider my={4} />
+                    <Group justify="space-between">
+                      <Text fw={700}>
+                        {Number(shiftDetail.shift.difference) === 0 ? "✓ CUADRE PERFECTO" : Number(shiftDetail.shift.difference) > 0 ? "⚠ SOBRA" : "⚠ FALTA"}
+                      </Text>
+                      <Text fw={800} size="lg" c={Number(shiftDetail.shift.difference) === 0 ? "green" : Number(shiftDetail.shift.difference) > 0 ? "blue" : "red"}>
+                        {fmt(Math.abs(Number(shiftDetail.shift.difference ?? 0)))}
+                      </Text>
+                    </Group>
+                  </Stack>
+                </Paper>
+              )}
+
+              <Divider />
+
+              {/* Resumen de productos vendidos */}
+              {shiftDetail.productSummary && shiftDetail.productSummary.length > 0 && (
+                <>
+                  <Paper p="md" radius="md" withBorder>
+                    <Group gap="xs" mb="sm">
+                      <IconScale size={16} />
+                      <Text size="sm" fw={700}>Productos Vendidos</Text>
+                      {shiftDetail.totalVolumeKg != null && (
+                        <Badge variant="light" color="orange" size="sm">{Number(shiftDetail.totalVolumeKg).toLocaleString("es-AR", { maximumFractionDigits: 1 })} Kg total</Badge>
+                      )}
+                    </Group>
+                    <Stack gap={4}>
+                      {shiftDetail.productSummary.map((p: any) => (
+                        <Group key={p.name} justify="space-between" p="xs" style={{ background: "var(--gd-bg-secondary)", borderRadius: "6px" }}>
+                          <Text size="sm" fw={600}>{p.name}</Text>
+                          <Group gap="md">
+                            {p.kg > 0 && <Text size="xs" c="dimmed">{p.kg.toLocaleString("es-AR", { maximumFractionDigits: 1 })} Kg</Text>}
+                            {p.units > 0 && <Text size="xs" c="dimmed">{p.units} uds</Text>}
+                            <Text size="sm" fw={700}>{fmt(p.revenue)}</Text>
+                          </Group>
+                        </Group>
+                      ))}
+                    </Stack>
+                  </Paper>
+                  <Divider />
+                </>
+              )}
+
+              {/* Lista de pedidos */}
+              <div>
+                <Text size="sm" fw={700} mb="xs">Todos los Pedidos del Turno</Text>
+                <Stack gap={4}>
+                  {shiftDetail.orders.map((order: any) => (
+                    <Paper key={order.id} p="xs" radius="sm" style={{ border: "1px solid var(--gd-border)" }}>
+                      <Group justify="space-between" mb={order.items?.length > 0 ? 4 : 0}>
+                        <Group gap="sm">
+                          <Text size="sm" fw={700} c="dimmed">#{order.orderNumber}</Text>
+                          <Text size="sm" fw={600}>{order.customerName}</Text>
+                          <Badge size="xs" variant="light" color={order.isDelivery ? "orange" : "blue"}>
+                            {order.isDelivery ? "Delivery" : "Retiro"}
+                          </Badge>
+                          {order.status === "CANCELLED" && <Badge size="xs" color="red">Cancelado</Badge>}
+                        </Group>
+                        <Group gap="sm">
+                          <Badge size="xs" variant="outline" color="gray">{order.paymentMethod}</Badge>
+                          <Text size="sm" fw={700} c={order.isPaid ? "dark" : "dimmed"}>
+                            {fmt(Number(order.totalPrice))}
+                          </Text>
+                        </Group>
+                      </Group>
+                      {order.items?.length > 0 && (
+                        <Stack gap={2} ml="md">
+                          {order.items.map((item: any) => (
+                            <Group key={item.id} gap="xs">
+                              <Text size="xs" c="dimmed">•</Text>
+                              <Text size="xs" c="dimmed">{item.productName}</Text>
+                              <Text size="xs" c="dimmed">
+                                {item.unitType === "KG" ? `${item.quantity} Kg` : `x${item.quantity}`}
+                              </Text>
+                              <Text size="xs" fw={600}>{fmt(item.subtotal)}</Text>
+                            </Group>
+                          ))}
+                        </Stack>
+                      )}
+                    </Paper>
+                  ))}
+                </Stack>
+              </div>
+            </Stack>
+          </ScrollArea>
+        ) : (
+          <Text c="dimmed">No se encontraron datos del turno.</Text>
+        )}
+      </Drawer>
 
       {/* ── GASTOS TAB (Se mantiene igual para gestión operativa) ── */}
       {activeTab === "gastos" && (

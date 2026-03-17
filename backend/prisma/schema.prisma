@@ -12,6 +12,7 @@ model Tenant {
   name      String
   slug      String   @unique
   plan      Plan     @default(FREE)
+  adminPin  String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -28,6 +29,7 @@ model Tenant {
   waSessionStates    WaSessionState[]
   waMessages         WaMessage[]
   customers          Customer[]
+  refreshTokens      RefreshToken[]
 
   @@map("tenants")
 }
@@ -49,8 +51,10 @@ model User {
   shiftsOpened        Shift[]             @relation("ShiftOpener")
   expenses            Expense[]
   shiftCollaborations ShiftCollaborator[]
+  refreshTokens       RefreshToken[]
 
   @@unique([tenantId, email])
+  @@index([tenantId])
   @@map("users")
 }
 
@@ -65,6 +69,7 @@ model Category {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@index([tenantId])
   @@map("categories")
 }
 
@@ -94,6 +99,7 @@ model Product {
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]
 
+  @@index([tenantId])
   @@map("products")
 }
 
@@ -111,6 +117,7 @@ model Table {
   orders Order[]
 
   @@unique([tenantId, number])
+  @@index([tenantId])
   @@map("tables")
 }
 
@@ -130,9 +137,13 @@ model Shift {
   notes        String?
   
   // Rendición de Delivery
-  deliverySettlementAmount Decimal?  @db.Decimal(10, 2)
-  deliverySettlementBy     String?
-  deliverySettlementAt     DateTime?
+  deliverySettlementAmount   Decimal?  @db.Decimal(10, 2)
+  deliverySettlementBy       String?
+  deliverySettlementUserId   String?
+  deliverySettlementAt       DateTime?
+  
+  // Conteo de billetes al cierre (JSON: { "20000": 2, "1000": 5, ... })
+  billCounts                 Json?
   
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
@@ -143,6 +154,7 @@ model Shift {
   expenses      Expense[]
   collaborators ShiftCollaborator[]
 
+  @@index([tenantId])
   @@map("shifts")
 }
 
@@ -160,6 +172,7 @@ model ShiftCollaborator {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([shiftId, userId])
+  @@index([tenantId])
   @@map("shift_collaborators")
 }
 
@@ -170,12 +183,14 @@ model Cadete {
   name      String
   phone     String?
   isActive  Boolean  @default(true)
+  isFixed   Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders Order[]
 
+  @@index([tenantId])
   @@map("cadetes")
 }
 
@@ -206,6 +221,7 @@ model Expense {
   shift  Shift? @relation(fields: [shiftId], references: [id])
   user   User?  @relation(fields: [userId], references: [id])
 
+  @@index([tenantId])
   @@map("expenses")
 }
 
@@ -261,6 +277,7 @@ model Order {
   items    OrderItem[]
 
   @@unique([shiftId, orderNumber])
+  @@index([tenantId])
   @@map("orders")
 }
 
@@ -287,6 +304,44 @@ model OrderItem {
   @@map("order_items")
 }
 
+// ─── REFRESH TOKEN ──────────────────────────────────────────────────────────
+model RefreshToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  tenantId  String
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([tenantId])
+  @@map("refresh_tokens")
+}
+
+// ─── AUDIT LOG ──────────────────────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([action])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
 // ─── ENUMS ───────────────────────────────────────────────────────────────────
 enum Role {
   OWNER
@@ -294,6 +349,8 @@ enum Role {
   CASHIER
   COOK
   STAFF
+  TELEFONISTA
+  ENCARGADO_DELIVERY
 }
 
 enum Plan {
@@ -393,6 +450,7 @@ model Customer {
   tags      CustomerTag[]
 
   @@unique([tenantId, phone])
+  @@index([tenantId])
   @@map("customers")
 }
 
@@ -440,6 +498,7 @@ model WaSessionState {
   messages WaMessage[]
 
   @@unique([tenantId, jid])
+  @@index([tenantId])
   @@map("wa_session_states")
 }
 

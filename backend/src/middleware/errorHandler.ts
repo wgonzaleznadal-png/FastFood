@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { ZodError } from "zod";
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -6,16 +7,27 @@ export interface AppError extends Error {
 }
 
 export function errorHandler(
-  err: AppError,
+  err: AppError | ZodError,
   _req: Request,
   res: Response,
   _next: NextFunction
 ): void {
-  const statusCode = err.statusCode ?? 500;
-  const message = err.isOperational ? err.message : "Internal Server Error";
+  let statusCode = (err as AppError).statusCode ?? 500;
+  if (err instanceof ZodError) {
+    statusCode = 400;
+  }
+  const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+  const message = (err as AppError).isOperational
+    ? (err as AppError).message
+    : err instanceof ZodError
+      ? err.issues?.[0]?.message ?? "Datos inválidos"
+      : isDev
+        ? (err?.message ?? String(err))
+        : "Internal Server Error";
 
-  if (process.env.NODE_ENV === "development") {
-    console.error("[ERROR]", err);
+  if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === undefined) {
+    console.error("[ERROR]", err?.message ?? err);
+    if (err?.stack) console.error(err.stack);
   }
 
   res.status(statusCode).json({

@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
+
+const safeStorage = {
+  getItem: (name: string) => (typeof window !== "undefined" ? localStorage.getItem(name) : null),
+  setItem: (name: string, value: string) => { if (typeof window !== "undefined") localStorage.setItem(name, value); },
+  removeItem: (name: string) => { if (typeof window !== "undefined") localStorage.removeItem(name); },
+};
 
 export interface ShiftCollaborator {
   id: string;
@@ -16,6 +22,7 @@ export interface ActiveShift {
   openedBy: { id: string; name: string; role: string };
   collaborators?: ShiftCollaborator[];
   notes?: string;
+  deliverySettlementAmount?: number;
 }
 
 interface ShiftState {
@@ -31,6 +38,6 @@ export const useShiftStore = create<ShiftState>()(
       setActiveShift: (shift) => set({ activeShift: shift }),
       clearShift: () => set({ activeShift: null }),
     }),
-    { name: "gastrodash-shift" }
+    { name: "gastrodash-shift", storage: createJSONStorage(() => safeStorage) }
   )
 );

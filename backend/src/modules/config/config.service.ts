@@ -1,5 +1,7 @@
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { createError } from "@/middleware/errorHandler";
+import { logAudit } from "@/lib/auditLog";
 import { MODULES, DEFAULT_ROLE_ACCESS } from "@/lib/modules";
 
 // ─── SISTEMA DE PERMISOS SIMPLIFICADO (SIN TABLAS LEGACY) ────────────────────
@@ -97,7 +99,58 @@ export async function getUserEffectivePermissions(tenantId: string, userId: stri
   return result;
 }
 
+// ─── Admin PIN ────────────────────────────────────────────────────────────────
+export async function setAdminPin(tenantId: string, pin: string) {
+  if (!pin || pin.length < 4 || pin.length > 6) {
+    throw createError("El PIN debe tener entre 4 y 6 dígitos", 400);
+  }
+  if (!/^\d+$/.test(pin)) {
+    throw createError("El PIN solo puede contener números", 400);
+  }
+  const hashed = await bcrypt.hash(pin, 10);
+  await prisma.tenant.update({ where: { id: tenantId }, data: { adminPin: hashed } });
+  logAudit({ tenantId, action: "ADMIN_PIN_CHANGED", entity: "tenant", entityId: tenantId });
+  return { success: true };
+}
+
+export async function validateAdminPin(tenantId: string, pin: string): Promise<boolean> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { adminPin: true } });
+  if (!tenant?.adminPin) return false;
+  return bcrypt.compare(pin, tenant.adminPin);
+}
+
+export async function hasAdminPin(tenantId: string): Promise<boolean> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { adminPin: true } });
+  return !!tenant?.adminPin;
+}
+
 // ─── Team management ──────────────────────────────────────────────────────────
+export async function createUser(
+  tenantId: string,
+  data: { name: string; email: string; password: string; role: string }
+) {
+  const emailLower = data.email.toLowerCase().trim();
+  const existing = await prisma.user.findFirst({
+    where: { tenantId, email: emailLower },
+  });
+  if (existing) throw createError("Ya existe un usuario con ese email", 409);
+
+  const passwordHash = await bcrypt.hash(data.password, 12);
+
+  const newUser = await prisma.user.create({
+    data: {
+      tenantId,
+      name: data.name.trim(),
+      email: emailLower,
+      passwordHash,
+      role: data.role as "OWNER" | "MANAGER" | "CASHIER" | "COOK" | "STAFF" | "TELEFONISTA" | "ENCARGADO_DELIVERY",
+    },
+    select: { id: true, name: true, email: true, role: true, isActive: true },
+  });
+  logAudit({ tenantId, action: "USER_CREATED", entity: "user", entityId: newUser.id });
+  return newUser;
+}
+
 export async function listUsers(tenantId: string) {
   return prisma.user.findMany({
     where: { tenantId },
@@ -121,7 +174,7 @@ export async function updateUser(
   const user = await prisma.user.findFirst({ where: { id: userId, tenantId } });
   if (!user) throw createError("Usuario no encontrado", 404);
 
-  return prisma.user.update({
+  const updated = await prisma.user.update({
     where: { id: userId },
     data: {
       ...(data.name ? { name: data.name } : {}),
@@ -130,4 +183,6 @@ export async function updateUser(
     },
     select: { id: true, name: true, email: true, role: true, isActive: true },
   });
+  logAudit({ tenantId, action: "USER_UPDATED", entity: "user", entityId: userId });
+  return updated;
 }

@@ -1,8 +1,8 @@
 import { prisma } from '../../lib/prisma';
 import { createError } from '../../middleware/errorHandler';
+import { logAudit } from "@/lib/auditLog";
 import type { Prisma } from '@prisma/client';
 
-// ─── UTILIDAD HÍBRIDA ────────────────────────────────────────────────────────
 // ─── UTILIDAD HÍBRIDA ────────────────────────────────────────────────────────
 function formatHybridOrder(order: any) {
   if (!order) return order;
@@ -12,36 +12,30 @@ function formatHybridOrder(order: any) {
   let addedItems: any[] = [];
   let previousItems: any[] = [];
   
-  if (order.lastPrintedItems && Array.isArray(order.lastPrintedItems)) {
-    const lastPrinted = order.lastPrintedItems as any[];
-    const currentItems = order.items || [];
-    
-    // Comparar items actuales con los últimos impresos
-    currentItems.forEach((current: any) => {
-      const previous = lastPrinted.find((p: any) => p.productId === current.productId);
-      
-      // FIX: Usamos Number() para asegurar que la matemática no falle
-      const currentQty = Number(current.quantity || 0);
-      const previousQty = previous ? Number(previous.quantity || 0) : 0;
-      
-      if (!previous) {
-        // Item completamente nuevo
-        isAddition = true;
-        addedItems.push(current);
-      } else if (currentQty > previousQty) {
-        // Item con cantidad aumentada
-        isAddition = true;
-        const delta = currentQty - previousQty;
-        addedItems.push({ ...current, quantity: delta });
-      }
-    });
-    
-    // Items que ya estaban (Mantenemos la cantidad que se imprimió antes)
-    previousItems = lastPrinted.map((p: any) => {
-      const item = currentItems.find((c: any) => c.productId === p.productId);
-      return item ? { ...item, quantity: Number(p.quantity || 0) } : null;
-    }).filter(Boolean);
-  }
+  const lastPrinted = (order.lastPrintedItems && Array.isArray(order.lastPrintedItems))
+    ? order.lastPrintedItems as any[]
+    : [];
+  const currentItems = order.items || [];
+
+  currentItems.forEach((current: any) => {
+    const previous = lastPrinted.find((p: any) => p.productId === current.productId);
+    const currentQty = Number(current.quantity || 0);
+    const previousQty = previous ? Number(previous.quantity || 0) : 0;
+
+    if (!previous) {
+      isAddition = true;
+      addedItems.push(current);
+    } else if (currentQty > previousQty) {
+      isAddition = true;
+      const delta = currentQty - previousQty;
+      addedItems.push({ ...current, quantity: delta });
+    }
+  });
+
+  previousItems = lastPrinted.map((p: any) => {
+    const item = currentItems.find((c: any) => c.productId === p.productId);
+    return item ? { ...item, quantity: Number(p.quantity || 0) } : null;
+  }).filter(Boolean);
   
   return {
     ...order,
@@ -146,14 +140,27 @@ export const ordersService = {
       finalOrderNumber = (lastOrder?.orderNumber || 0) + 1;
     }
 
-    // Si se envía a kilaje desde la creación, guardar snapshot para tracking de adiciones
-    let lastPrintedItems = undefined;
-    if (data.isSentToKitchen) {
-      lastPrintedItems = itemsToCreate.map((item: any) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitType: item.unitType,
-      }));
+    // SIEMPRE guardar snapshot para tracking de adiciones futuras
+    const lastPrintedItems = itemsToCreate.map((item: any) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitType: item.unitType,
+    }));
+
+    // Auto-link customer by phone if available (min 8 digits to be a real phone)
+    let customerId = data.customerId;
+    const phoneDigits = (data.deliveryPhone || '').replace(/\D/g, '');
+    if (!customerId && data.deliveryPhone && phoneDigits.length >= 8) {
+      try {
+        const { upsertCustomerByPhone } = await import("@/modules/customers/customers.service");
+        const customer = await upsertCustomerByPhone(tenantId, data.deliveryPhone, {
+          name: data.customerName,
+          address: data.isDelivery ? data.deliveryAddress : undefined,
+        });
+        customerId = customer.id;
+      } catch (e) {
+        console.warn("[createOrder] Auto-link customer failed:", e);
+      }
     }
 
     const order = await prisma.order.create({
@@ -161,7 +168,7 @@ export const ordersService = {
         tenantId,
         shiftId: data.shiftId,
         userId: data.userId,
-        customerId: data.customerId,
+        customerId,
         orderNumber: finalOrderNumber,
         customerName: data.customerName,
         isDelivery: data.isDelivery,
@@ -180,6 +187,15 @@ export const ordersService = {
         items: { include: { product: true } },
       },
     });
+
+    if (customerId) {
+      try {
+        const { updateCustomerStats } = await import("@/modules/customers/customers.service");
+        await updateCustomerStats(customerId, tenantId);
+      } catch (e) {
+        console.warn("[createOrder] Update customer stats failed:", e);
+      }
+    }
 
     return formatHybridOrder(order);
   },
@@ -205,6 +221,8 @@ export const ordersService = {
       where,
       include: {
         items: { include: { product: true } },
+        cadete: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -265,15 +283,16 @@ export const ordersService = {
       
       updateData.totalPrice = itemsToCreate.reduce((sum: number, item: any) => sum + item.subtotal, 0);
       
-      // 🚩 CLAVE 2: Si se envía a cocina, preparamos el NUEVO snapshot 
-      // pero el cálculo de adición usará el viejo.
+      // SIEMPRE actualizar snapshot cuando se modifican items
+      const printedSnapshot = itemsToCreate.map((item: any) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitType: item.unitType,
+      }));
+      updateData.lastPrintedItems = printedSnapshot;
+
       if (data.isSentToKitchen) {
-        const printedSnapshot = itemsToCreate.map((item: any) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitType: item.unitType,
-        }));
-        updateData.lastPrintedItems = printedSnapshot;
+        updateData.isSentToKitchen = true;
       }
       
       await prisma.orderItem.deleteMany({ where: { orderId } });
@@ -322,14 +341,13 @@ export const ordersService = {
     // Track si realmente se actualizaron items
     const itemsWereUpdated = !!(data.items?.length > 0 || data.cartaItems?.length > 0);
 
-    // Actualizamos
     await prisma.order.update({
       where: { id: orderId },
       data: updateData,
     });
     
-    const fullOrder = await prisma.order.findUnique({
-      where: { id: orderId },
+    const fullOrder = await prisma.order.findFirst({
+      where: { id: orderId, tenantId },
       include: { items: { include: { product: true } } },
     });
     
@@ -343,11 +361,16 @@ export const ordersService = {
 },
 
   async deleteOrder(tenantId: string, orderId: string) {
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
+    if (!order) throw createError("Pedido no encontrado", 404);
     await prisma.order.delete({ where: { id: orderId } });
+    logAudit({ tenantId, action: "ORDER_DELETED", entity: "order", entityId: orderId });
     return { success: true };
   },
 
   async sendToKitchen(tenantId: string, orderId: string) {
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
+    if (!order) throw createError("Pedido no encontrado", 404);
     const updated = await prisma.order.update({
       where: { id: orderId },
       data: { isSentToKitchen: true },
@@ -357,9 +380,11 @@ export const ordersService = {
   },
 
   async updateStatus(tenantId: string, orderId: string, status: string, paymentMethod?: string, orderData?: any) {
+    const existingOrder = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
+    if (!existingOrder) throw createError("Pedido no encontrado", 404);
+
     const updateData: any = {};
     
-    // Si viene status, actualizamos el estado de ENTREGA
     if (status) {
       updateData.status = status as any;
     }
@@ -438,6 +463,8 @@ export const ordersService = {
   },
 
   async assignCadete(tenantId: string, orderId: string, cadeteId: string) {
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
+    if (!order) throw createError("Pedido no encontrado", 404);
     const updated = await prisma.order.update({
       where: { id: orderId },
       data: { cadeteId },
@@ -447,6 +474,8 @@ export const ordersService = {
   },
 
   async updateCoords(tenantId: string, orderId: string, lat: number, lng: number) {
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
+    if (!order) throw createError("Pedido no encontrado", 404);
     const updated = await prisma.order.update({
       where: { id: orderId },
       data: { deliveryLat: lat, deliveryLng: lng },

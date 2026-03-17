@@ -1,16 +1,27 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate } from '@/middleware/tenantGuard';
+import { authenticate, requireRole } from '@/middleware/tenantGuard';
+import { requireModule } from '@/middleware/moduleGuard';
 import * as service from './customers.service';
 import * as schema from './customers.schema';
 
 const router = Router();
 router.use(authenticate);
+router.use(requireModule("caja"));
 
 // ─── CUSTOMER ROUTES ─────────────────────────────────────────────────────────
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await service.listCustomers(req.auth!.tenantId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/search', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const q = String(req.query.q || '');
+    res.json(await service.searchCustomersByPhone(req.auth!.tenantId, q));
   } catch (err) {
     next(err);
   }
@@ -50,7 +61,7 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
-router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     await service.deleteCustomer(req.auth!.tenantId, String(req.params.id));
     res.json({ success: true });
@@ -79,7 +90,7 @@ router.patch('/addresses/:id', async (req: Request, res: Response, next: NextFun
   }
 });
 
-router.delete('/addresses/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/addresses/:id', requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     await service.deleteAddress(req.auth!.tenantId, String(req.params.id));
     res.json({ success: true });
@@ -99,7 +110,7 @@ router.post('/tags', async (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
-router.delete('/tags/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/tags/:id', requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     await service.deleteTag(req.auth!.tenantId, String(req.params.id));
     res.json({ success: true });

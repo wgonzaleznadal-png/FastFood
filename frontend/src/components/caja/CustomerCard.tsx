@@ -1,7 +1,7 @@
 'use client';
 
-import { Card, Text, Badge, Group, Stack, Loader, Alert } from '@mantine/core';
-import { IconPhone, IconMapPin, IconTrophy, IconClock, IconShoppingCart } from '@tabler/icons-react';
+import { Card, Text, Badge, Group, Stack, Alert } from '@mantine/core';
+import { IconMapPin, IconStar, IconStarFilled, IconShoppingCart, IconNote } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { fmt } from '@/lib/format';
@@ -9,167 +9,119 @@ import { fmt } from '@/lib/format';
 interface CustomerInsights {
   favoriteProduct: { name: string; count: number } | null;
   sundayStreak: number;
+  totalPrizes: number;
   averageOrderValue: number;
   daysSinceLastOrder: number | null;
+  lastOrderNotes: string | null;
   loyaltyTags: string[];
 }
 
-interface Customer {
-  id: string;
-  phone: string;
-  name: string | null;
-  email: string | null;
-  totalOrders: number;
-  totalSpent: number;
-  lastOrderAt: string | null;
-  addresses: Array<{
-    id: string;
-    street: string;
-    reference: string | null;
-    isDefault: boolean;
-  }>;
-  insights: CustomerInsights;
-}
-
 interface CustomerCardProps {
-  phone: string;
-  onCustomerLoaded?: (customer: Customer) => void;
+  customer: any;
+  isDelivery?: boolean;
+  onAutoFill?: (data: { name?: string; address?: string }) => void;
 }
 
-export default function CustomerCard({ phone, onCustomerLoaded }: CustomerCardProps) {
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default function CustomerCard({ customer, isDelivery, onAutoFill }: CustomerCardProps) {
+  const [insights, setInsights] = useState<CustomerInsights | null>(null);
 
   useEffect(() => {
-    if (!phone || phone.length < 8) {
-      setLoading(false);
-      return;
-    }
-
-    const fetchCustomer = async () => {
+    if (!customer?.id) return;
+    const load = async () => {
       try {
-        setLoading(true);
-        setError(null);
-        const res = await api.get(`/api/customers/phone/${phone}`);
-        setCustomer(res.data);
-        onCustomerLoaded?.(res.data);
-      } catch (err: any) {
-        if (err.response?.status === 404) {
-          setError('Cliente nuevo');
-        } else {
-          setError('Error al cargar datos del cliente');
-        }
-        setCustomer(null);
-      } finally {
-        setLoading(false);
+        const res = await api.get(`/api/customers/phone/${encodeURIComponent(customer.phone)}`);
+        setInsights(res.data?.insights || null);
+      } catch {
+        setInsights(null);
       }
     };
-
-    fetchCustomer();
-  }, [phone, onCustomerLoaded]);
-
-  if (loading) {
-    return (
-      <Card withBorder p="md">
-        <Group justify="center">
-          <Loader size="sm" />
-          <Text size="sm" c="dimmed">Cargando datos del cliente...</Text>
-        </Group>
-      </Card>
-    );
-  }
-
-  // No mostrar nada si es cliente nuevo o hay error
-  if (error && !customer) {
-    return null;
-  }
+    load();
+  }, [customer?.id]);
 
   if (!customer) return null;
 
-  const { insights } = customer;
-  const defaultAddress = customer.addresses.find(a => a.isDefault);
+  const defaultAddress = customer.addresses?.find((a: any) => a.isDefault);
+  const streak = insights?.sundayStreak ?? 0;
+  const totalPrizes = insights?.totalPrizes ?? 0;
+  const maxStars = 5;
 
   return (
-    <Card withBorder p="md" style={{ backgroundColor: 'var(--gd-surface-secondary)' }}>
-      <Stack gap="sm">
-        {/* Header */}
-        <Group justify="space-between">
+    <Card
+      withBorder
+      p="sm"
+      style={{
+        backgroundColor: 'var(--gd-surface-secondary)',
+        cursor: onAutoFill ? 'pointer' : undefined,
+        transition: 'all 0.15s',
+        borderColor: 'var(--mantine-color-green-5)',
+      }}
+      onClick={() => {
+        if (onAutoFill) {
+          onAutoFill({
+            name: customer.name || undefined,
+            address: defaultAddress?.street || undefined,
+          });
+        }
+      }}
+    >
+      <Stack gap={6}>
+        {/* Header: name + stats */}
+        <Group justify="space-between" align="flex-start">
           <div>
-            <Text fw={600} size="lg">{customer.name || 'Cliente'}</Text>
-            <Text size="sm" c="dimmed">
-              <IconPhone size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-              {customer.phone}
+            <Text fw={700} size="sm">{customer.name || 'Cliente'}</Text>
+            <Text size="xs" c="dimmed">
+              {customer.totalOrders || customer._count?.orders || 0} pedidos · {fmt(Number(customer.totalSpent || 0))}
             </Text>
           </div>
-          <Badge color="blue" variant="light">
-            {customer.totalOrders} pedidos
-          </Badge>
+          <Badge color="green" variant="light" size="xs">ACTIVO</Badge>
         </Group>
 
-        {/* Dirección por defecto */}
+        {/* Address */}
         {defaultAddress && (
-          <Group gap="xs">
-            <IconMapPin size={16} color="var(--gd-text-secondary)" />
-            <Text size="sm" c="dimmed">
-              {defaultAddress.street}
-              {defaultAddress.reference && ` (${defaultAddress.reference})`}
+          <Text size="xs" c="dimmed">
+            <IconMapPin size={12} style={{ verticalAlign: 'middle' }} /> {defaultAddress.street}
+          </Text>
+        )}
+
+        {/* Loyalty Stars */}
+        <Group gap={2} align="center">
+          {Array.from({ length: maxStars }).map((_, i) => (
+            i < streak
+              ? <IconStarFilled key={i} size={16} color="var(--mantine-color-orange-5)" />
+              : <IconStar key={i} size={16} color="var(--mantine-color-gray-4)" />
+          ))}
+          {streak > 0 && (
+            <Text size="xs" c="orange" fw={600} ml={4}>
+              {streak} domingo{streak > 1 ? 's' : ''} seguidos
             </Text>
-          </Group>
-        )}
-
-        {/* Insights de Fidelización */}
-        {insights.loyaltyTags.length > 0 && (
-          <Group gap="xs">
-            {insights.loyaltyTags.map((tag, idx) => (
-              <Badge key={idx} color="green" variant="light" leftSection={<IconTrophy size={12} />}>
-                {tag}
-              </Badge>
-            ))}
-          </Group>
-        )}
-
-        {/* Producto favorito */}
-        {insights.favoriteProduct && (
-          <Group gap="xs">
-            <IconShoppingCart size={16} color="var(--gd-text-secondary)" />
-            <Text size="sm">
-              <strong>{insights.favoriteProduct.name}</strong>
-              <Text span c="dimmed"> ({insights.favoriteProduct.count}x)</Text>
-            </Text>
-          </Group>
-        )}
-
-        {/* Estadísticas */}
-        <Group gap="md" grow>
-          <div>
-            <Text size="xs" c="dimmed">Total gastado</Text>
-            <Text fw={600}>{fmt(customer.totalSpent)}</Text>
-          </div>
-          <div>
-            <Text size="xs" c="dimmed">Promedio</Text>
-            <Text fw={600}>{fmt(insights.averageOrderValue)}</Text>
-          </div>
-          {insights.daysSinceLastOrder !== null && (
-            <div>
-              <Text size="xs" c="dimmed">
-                <IconClock size={12} style={{ verticalAlign: 'middle' }} /> Último pedido
-              </Text>
-              <Text fw={600}>
-                {insights.daysSinceLastOrder === 0 
-                  ? 'Hoy' 
-                  : `Hace ${insights.daysSinceLastOrder}d`}
-              </Text>
-            </div>
           )}
         </Group>
 
-        {/* Racha de domingos */}
-        {insights.sundayStreak > 0 && (
-          <Alert color="orange" variant="light">
-            <Text size="sm" fw={600}>
-              🔥 Racha de {insights.sundayStreak} domingo{insights.sundayStreak > 1 ? 's' : ''}
-            </Text>
+        {/* Prizes */}
+        {totalPrizes > 0 && (
+          <Badge color="yellow" variant="light" size="sm">
+            {totalPrizes} premio{totalPrizes > 1 ? 's' : ''} obtenido{totalPrizes > 1 ? 's' : ''}
+          </Badge>
+        )}
+
+        {/* Favorite product */}
+        {insights?.favoriteProduct && (
+          <Text size="xs" c="dimmed">
+            <IconShoppingCart size={12} style={{ verticalAlign: 'middle' }} /> Favorito: <strong>{insights.favoriteProduct.name}</strong> ({insights.favoriteProduct.count}x)
+          </Text>
+        )}
+
+        {/* Last order notes */}
+        {insights?.lastOrderNotes && (
+          <Alert color="blue" variant="light" p="xs" radius="sm" icon={<IconNote size={14} />}>
+            <Text size="xs">Último pedido: {insights.lastOrderNotes}</Text>
+          </Alert>
+        )}
+
+        {/* Customer notes */}
+        {customer.notes && (
+          <Alert color="yellow" variant="light" p="xs" radius="sm">
+            <Text size="xs" fw={600}>{customer.notes}</Text>
           </Alert>
         )}
       </Stack>

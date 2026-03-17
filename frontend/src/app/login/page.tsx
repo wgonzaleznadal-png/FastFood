@@ -22,6 +22,7 @@ import styles from "./login.module.css";
 
 const loginSchema = z.object({
   tenantSlug: z.string().min(1, "Ingresá el nombre de tu local"),
+  email: z.string().email("Email inválido"),
   password: z.string().min(1, "Ingresá tu contraseña"),
 });
 
@@ -41,8 +42,12 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     setError(null);
     try {
-      const res = await api.post("/api/auth/login", data);
-      setAuth(res.data.token, res.data.user, res.data.tenant);
+      const res = await api.post("/api/auth/login", {
+        tenantSlug: data.tenantSlug,
+        email: data.email.trim(),
+        password: data.password,
+      });
+      setAuth(res.data.token, res.data.user, res.data.tenant, res.data.refreshToken);
       router.push("/dashboard");
     } catch (err) {
       setError(getApiErrorMessage(err, "Error al iniciar sesión. Verificá tus datos."));
@@ -79,6 +84,14 @@ export default function LoginPage() {
               description="El identificador único de tu negocio"
               error={errors.tenantSlug?.message}
               {...register("tenantSlug")}
+            />
+
+            <TextInput
+              label="Email"
+              placeholder="tu@email.com"
+              description="Opcional si sos el único usuario"
+              error={errors.email?.message}
+              {...register("email")}
             />
 
             <PasswordInput

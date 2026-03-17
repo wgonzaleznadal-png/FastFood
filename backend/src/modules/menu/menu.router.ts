@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { authenticate, requireRole } from "@/middleware/tenantGuard";
 import { requireModule } from "@/middleware/moduleGuard";
-import { createKgOrderSchema } from "./menu.schema";
+import { createKgOrderSchema, updateStatusSchema, sendToKitchenSchema, cancelOrderSchema } from "./menu.schema";
 import {
   listKgOrders,
   createKgOrder,
@@ -34,22 +34,22 @@ router.post("/kg-orders", async (req: Request, res: Response, next: NextFunction
 
 router.patch("/kg-orders/:id/status", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // IMPORTANTE: req.body lleva la Paella y la dirección
-    res.json(await updateKgOrderStatus(req.auth!.tenantId, String(req.params.id), req.body.status, req.body));
+    const validated = updateStatusSchema.parse(req.body);
+    res.json(await updateKgOrderStatus(req.auth!.tenantId, String(req.params.id), validated.status, validated));
   } catch (err) { next(err); }
 });
 
 router.patch("/kg-orders/:id/send-to-kitchen", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Ahora le pasamos req.body para que el service tenga la data nueva
-    res.json(await sendToKitchen(req.auth!.tenantId, String(req.params.id), req.body));
+    const validated = sendToKitchenSchema.parse(req.body);
+    res.json(await sendToKitchen(req.auth!.tenantId, String(req.params.id), validated));
   } catch (err) { next(err); }
 });
 
 router.delete("/kg-orders/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { tenantId, userId, role } = req.auth!;
-    const { cancellationNote, pin } = req.body;
+    const { cancellationNote, pin } = cancelOrderSchema.parse(req.body);
     await cancelKgOrder(tenantId, userId, role, String(req.params.id), cancellationNote, pin);
     res.status(204).send();
   } catch (err) { next(err); }

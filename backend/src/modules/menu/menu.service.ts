@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createError } from "@/middleware/errorHandler";
+import { logAudit } from "@/lib/auditLog";
 import type { CreateKgOrderInput } from "./menu.schema";
 // import { notifyOrderStatusChange } from "../whatsapp/whatsapp.notifications";
 
@@ -263,25 +264,21 @@ export async function createKgOrder(tenantId: string, userId: string, role: stri
 }
 
 export async function updateKgOrderStatus(tenantId: string, id: string, status: any, data?: any) {
-  console.log('🔍 DEBUG updateKgOrderStatus - data recibida:', JSON.stringify(data, null, 2));
-  console.log('🔍 DEBUG updateKgOrderStatus - data.isSentToKitchen:', data?.isSentToKitchen);
-  
-  // Validar que el pedido no esté pagado antes de modificar
-  const existingOrder = await prisma.order.findUnique({ where: { id }, select: { isPaid: true } });
-  if (existingOrder?.isPaid) {
+  const existingOrder = await prisma.order.findFirst({ where: { id, tenantId }, select: { isPaid: true } });
+  if (!existingOrder) throw createError("Pedido no encontrado", 404);
+  if (existingOrder.isPaid) {
     throw createError("No se puede modificar un pedido que ya fue pagado", 400);
   }
   
   const updatedOrder = await prisma.$transaction(async (tx) => {
-    // FIX: Si hay data de items, reconstruimos respetando KILO y CARTA
     if (data && (data.items || data.cartaItems)) {
       await tx.orderItem.deleteMany({ where: { orderId: id } });
       
       let newTotal = 0;
-      const itemsToCreate: any[] = []; // FIX: Tipado explícito
+      const itemsToCreate: any[] = [];
 
       const processItem = async (item: any) => {
-        const p = await tx.product.findUnique({ where: { id: item.productId } });
+        const p = await tx.product.findFirst({ where: { id: item.productId, tenantId } });
         if (!p) return;
         
         const isKg = p.unitType === "KG";
@@ -337,7 +334,8 @@ export async function updateKgOrderStatus(tenantId: string, id: string, status: 
         updateData.paymentMethod = data.paymentMethod;
       }
       
-      console.log('🔍 DEBUG updateData antes de guardar:', JSON.stringify(updateData, null, 2));
+      const verifyOwnership = await tx.order.findFirst({ where: { id, tenantId } });
+      if (!verifyOwnership) throw createError("Pedido no encontrado", 404);
       
       return await tx.order.update({
         where: { id },
@@ -349,6 +347,9 @@ export async function updateKgOrderStatus(tenantId: string, id: string, status: 
         },
       });
     }
+
+    const verifyOwnership = await tx.order.findFirst({ where: { id, tenantId } });
+    if (!verifyOwnership) throw createError("Pedido no encontrado", 404);
 
     return await tx.order.update({
       where: { id },
@@ -383,16 +384,16 @@ export async function updateKgOrderStatus(tenantId: string, id: string, status: 
 }
 
 export async function sendToKitchen(tenantId: string, id: string, data?: any) {
-  // Validar que el pedido no esté pagado antes de modificar
-  const existingOrder = await prisma.order.findUnique({ 
-    where: { id }, 
+  const existingOrder = await prisma.order.findFirst({ 
+    where: { id, tenantId }, 
     select: { 
       isPaid: true, 
       lastPrintedItems: true,
       items: { include: { product: true } } 
     } 
   });
-  if (existingOrder?.isPaid) {
+  if (!existingOrder) throw createError("Pedido no encontrado", 404);
+  if (existingOrder.isPaid) {
     throw createError("No se puede modificar un pedido que ya fue pagado", 400);
   }
   
@@ -422,11 +423,6 @@ export async function sendToKitchen(tenantId: string, id: string, data?: any) {
       },
     });
     
-    // notifyOrderStatusChange(id, "SENT_TO_KITCHEN", tenantId).catch((err: any) => {
-    //   console.error("[Menu Service] Error enviando notificación:", err);
-    // });
-    
-    // Calcular isAddition y addedItems/previousItems usando el snapshot VIEJO
     return formatOrderWithAdditions(updated, oldSnapshot);
   }
 
@@ -436,9 +432,8 @@ export async function sendToKitchen(tenantId: string, id: string, data?: any) {
     let calculatedTotal = 0;
     const itemsToCreate: any[] = []; // FIX: Tipado explícito
 
-    // FIX: Mismo tratamiento híbrido que en updateKgOrderStatus
     const processItem = async (item: any) => {
-      const p = await tx.product.findUnique({ where: { id: item.productId } });
+      const p = await tx.product.findFirst({ where: { id: item.productId, tenantId } });
       if (!p) return;
       
       const isKg = p.unitType === "KG";
@@ -473,6 +468,9 @@ export async function sendToKitchen(tenantId: string, id: string, data?: any) {
       notes: item.notes
     }));
     
+    const verifyOwnership = await tx.order.findFirst({ where: { id, tenantId } });
+    if (!verifyOwnership) throw createError("Pedido no encontrado", 404);
+
     return await tx.order.update({
       where: { id },
       data: {
@@ -523,16 +521,20 @@ export async function cancelKgOrder(tenantId: string, userId: string, role: stri
     throw createError("Debe proporcionar una nota explicando el motivo de la cancelación", 400);
   }
 
-  // TODO: Validar PIN del cajero cuando se implemente en el frontend
-  // if (!pin || pin !== expectedPin) {
-  //   throw createError("PIN incorrecto", 401);
-  // }
+  if (order.isPaid && pin) {
+    const { validateAdminPin } = await import("@/modules/config/config.service");
+    const valid = await validateAdminPin(tenantId, pin);
+    if (!valid) throw createError("PIN de administrador incorrecto", 401);
+  } else if (order.isPaid && !pin) {
+    throw createError("Se requiere PIN de administrador para cancelar un pedido cobrado", 400);
+  }
 
   await prisma.order.update({
     where: { id },
     data: { 
       status: "CANCELLED",
-      notes: cancellationNote
+      notes: cancellationNote,
     },
   });
+  logAudit({ tenantId, userId, action: "ORDER_CANCELLED", entity: "order", entityId: id, metadata: { cancellationNote } });
 }

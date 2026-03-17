@@ -338,6 +338,7 @@ export default function CajaPage() {
           opened={deliverySettlementOpen}
           onClose={() => setDeliverySettlementOpen(false)}
           shiftId={activeShift.id}
+          collaborators={activeShift.collaborators}
           onSuccess={() => {
             notifications.show({
               title: "Rendición completada",

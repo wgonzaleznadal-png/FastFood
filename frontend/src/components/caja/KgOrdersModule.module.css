@@ -35,7 +35,7 @@
 
 .gridHeader {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 2fr 1fr 1fr 1fr;
+  grid-template-columns: 1.5fr 1fr 2fr 1fr 1fr 0.9fr 1fr;
   gap: var(--gd-space-2);
   padding: var(--gd-space-2) var(--gd-space-3);
   background: var(--gd-bg);
@@ -48,7 +48,7 @@
 
 .gridRow {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 2fr 1fr 1fr 1fr;
+  grid-template-columns: 1.5fr 1fr 2fr 1fr 1fr 0.9fr 1fr;
   gap: var(--gd-space-2);
   padding: var(--gd-space-2) var(--gd-space-3);
   background: var(--gd-card-bg);
