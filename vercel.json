@@ -1,2 +1,4 @@
 {
-  "$s
+  "framework": "nextjs",
+  "rootDirectory": "frontend"
+}
