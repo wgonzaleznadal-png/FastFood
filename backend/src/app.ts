@@ -18,6 +18,9 @@ import expensesRouter from "@/modules/expenses/expenses.router";
 
 const app = express();
 
+// Railway/proxy: permite que rate-limit use X-Forwarded-For correctamente
+app.set("trust proxy", 1);
+
 app.use(helmet());
 
 // CORS: En desarrollo, aceptar cualquier origen de la red local

@@ -3,10 +3,11 @@ import { loginSchema, registerTenantSchema } from "./auth.schema";
 import { login, registerTenant, refreshAccessToken, revokeRefreshToken } from "./auth.service";
 
 const router = Router();
+// Cross-origin (frontend en www.fastfood.com.ar, backend en Railway): sameSite "none" para que el navegador envíe cookies
 const COOKIE_OPTS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "strict" as const,
+  sameSite: (process.env.NODE_ENV === "production" ? "none" : "lax") as "none" | "lax",
   maxAge: 7 * 24 * 60 * 60 * 1000,
   path: "/",
 };
@@ -18,8 +19,9 @@ function setAuthCookies(res: Response, token: string, refreshToken: string) {
 }
 
 function clearAuthCookies(res: Response) {
-  res.clearCookie("gastrodash_token", { path: "/" });
-  res.clearCookie("gastrodash_refresh", { path: "/" });
+  const clearOpts = { path: "/", secure: process.env.NODE_ENV === "production", sameSite: (process.env.NODE_ENV === "production" ? "none" : "lax") as "none" | "lax" };
+  res.clearCookie("gastrodash_token", clearOpts);
+  res.clearCookie("gastrodash_refresh", clearOpts);
 }
 
 router.post("/register", async (req: Request, res: Response, next: NextFunction) => {
