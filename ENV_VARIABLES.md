@@ -137,8 +137,9 @@ O usa: https://generate-secret.vercel.app/32
 - Dominio custom: `https://api.tuempresa.com`
 
 ⚠️ **IMPORTANTE**:
+- **Debe incluir `https://`** (❌ `fastfood-production.up.railway.app` → ✅ `https://fastfood-production.up.railway.app`)
+- Sin el protocolo, el navegador trata la URL como ruta relativa y las peticiones van al dominio del frontend (404)
 - Sin trailing slash al final (❌ `https://api.com/`)
-- Debe ser HTTPS en producción
 - Debe coincidir con la URL de Railway
 
 **Cuándo configurar**:

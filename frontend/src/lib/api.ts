@@ -4,21 +4,21 @@ import { useAuthStore } from "@/store/authStore";
 
 // Asegura URL absoluta con protocolo (evita que el browser la trate como relativa)
 const normalizeApiUrl = (url: string) => {
-  const u = url.trim();
+  const u = (url || "").trim();
   if (!u) return "http://localhost:4000";
   return u.startsWith("http://") || u.startsWith("https://") ? u : `https://${u}`;
 };
 
-const apiUrl = normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000");
-
-// Para acceso desde tablet en la misma red: usa el host de la página (ej: 192.168.x.x:4000)
-const getApiBaseUrl = () =>
-  typeof window !== "undefined"
-    ? `http://${window.location.hostname}:4000/api/v1`
-    : `${apiUrl}/api/v1`;
+function getBaseUrl() {
+  const env = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+  if (typeof window !== "undefined" && !process.env.NEXT_PUBLIC_API_URL) {
+    return `http://${window.location.hostname}:4000/api/v1`;
+  }
+  return `${normalizeApiUrl(env)}/api/v1`;
+}
 
 export const api = axios.create({
-  baseURL: `${apiUrl}/api/v1`,
+  baseURL: getBaseUrl(),
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
