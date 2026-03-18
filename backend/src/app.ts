@@ -37,17 +37,16 @@ const corsOptions = {
       }
     }
     
-    // En producción, solo permitir FRONTEND_URL
-    const allowedOrigin = process.env.FRONTEND_URL ?? "http://localhost:3000";
-    if (!allowedOrigin || allowedOrigin === "http://localhost:3000") {
+    // En producción: FRONTEND_URL (puede ser lista separada por comas)
+    const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
+    if (!frontendUrl || frontendUrl === "http://localhost:3000") {
       if (process.env.NODE_ENV === "production") {
         console.error("FATAL: FRONTEND_URL must be set in production");
       }
     }
-    if (origin === allowedOrigin) {
-      return callback(null, true);
-    }
-    
+    const allowed = frontendUrl.split(",").map((u) => u.trim()).filter(Boolean);
+    if (allowed.includes(origin)) return callback(null, true);
+
     callback(new Error("Not allowed by CORS"));
   },
   credentials: true,

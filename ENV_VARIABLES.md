@@ -90,12 +90,13 @@ O usa: https://generate-secret.vercel.app/32
 
 **Ejemplos**:
 - Vercel: `https://gastrodash-new.vercel.app`
-- Dominio custom: `https://app.tuempresa.com`
+- Dominio custom: `https://www.fastfood.com.ar`
+- Varios orígenes: `https://www.fastfood.com.ar,https://fastfood.com.ar`
 
 ⚠️ **IMPORTANTE**:
 - Sin trailing slash al final (❌ `https://app.com/`)
 - Debe ser HTTPS en producción
-- Debe coincidir exactamente con la URL de Vercel
+- Debe coincidir exactamente con el origen (incluyendo `www` si aplica: `https://www.fastfood.com.ar`)
 
 **Cuándo configurar**:
 1. Primero despliega el frontend en Vercel
