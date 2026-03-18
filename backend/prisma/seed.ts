@@ -1,7 +1,13 @@
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+const url = process.env.DATABASE_URL;
+if (!url) throw new Error("DATABASE_URL is required for seed");
+
+const adapter = new PrismaPg({ connectionString: url });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("🌱 Iniciando seed de base de datos...");
@@ -12,7 +18,8 @@ async function main() {
     create: {
       id: "cmlybry6o0000t9jmmb50758t",
       name: "Plaza Nadal",
-      plan: "PREMIUM",
+      slug: "plaza-nadal",
+      plan: "PRO",
       isActive: true,
     },
   });
@@ -22,11 +29,11 @@ async function main() {
   const hashedPassword = await bcrypt.hash("admin123", 10);
   
   const user = await prisma.user.upsert({
-    where: { email: "admin@plazanadal.com" },
+    where: { tenantId_email: { tenantId: tenant.id, email: "admin@plazanadal.com" } },
     update: {},
     create: {
       email: "admin@plazanadal.com",
-      password: hashedPassword,
+      passwordHash: hashedPassword,
       name: "Administrador",
       role: "OWNER",
       tenantId: tenant.id,

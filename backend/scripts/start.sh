@@ -32,4 +32,7 @@ if [ "$migrate_exit" -ne 0 ]; then
   fi
 fi
 
+# Seed initial data (tenant, admin user, products) - idempotent via upsert
+npx prisma db seed
+
 exec node dist/server.js
