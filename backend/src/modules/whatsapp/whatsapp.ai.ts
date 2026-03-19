@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { sanitizeName } from "@/lib/sanitize";
+import { expensesService } from "@/modules/expenses/expenses.service";
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -277,7 +278,37 @@ async function executeConfirmWaOrder(
   });
 }
 
-// ─── MAIN AI HANDLER: PLAZA NADAL "MODO VENDEDOR ELITE" ────────────────────────
+async function executeCreateWaExpense(
+  tenantId: string,
+  data: { amount: number; description: string; category?: string }
+): Promise<string> {
+  try {
+    const openShift = await prisma.shift.findFirst({
+      where: { tenantId, status: "OPEN" },
+      orderBy: { openedAt: "desc" },
+    });
+
+    await expensesService.createExpense(tenantId, {
+      type: "CASH",
+      description: data.description.trim(),
+      amount: data.amount,
+      currency: "ARS",
+      isPaid: true,
+      category: data.category || "Otros",
+      shiftId: openShift?.id,
+    });
+
+    return JSON.stringify({
+      success: true,
+      message: `Gasto de ${fmt(data.amount)} en "${data.description}" cargado correctamente.`,
+    });
+  } catch (err: unknown) {
+    const msg = (err as { message?: string })?.message || "Error al cargar";
+    return JSON.stringify({ success: false, error: msg });
+  }
+}
+
+// ─── MAIN AI HANDLER ───────────────────────────────────────────────────────────
 
 export async function handleIncomingMessage(
   tenantId: string,
@@ -302,40 +333,30 @@ export async function handleIncomingMessage(
   const phoneNumber = jid.split('@')[0];
   
   const systemPrompt = isOpen
-    ? `Sos el "Mozo Estrella" de Plaza Nadal. Tu objetivo es vender con eficiencia y calidez correntina.
+    ? `Sos el asistente del negocio. Respondé a TODOS los usuarios que escriban. NUNCA rechaces por número de teléfono. NUNCA digas "no estás registrado" ni "no pude identificar tu número".
 
-🥘 MENÚ REAL DE HOY (Verdad Absoluta):
-${menuTexto}
+🥘 PEDIDOS (menú por kg):
+MENÚ: ${menuTexto}
+- Si piden comida: guialos con el menú, pedí nombre/retiro o delivery/pago, y cuando confirmen ejecutá confirmWaOrder con el ID del producto (ej: cmlz...).
 
-🚨 REGLAS DE ORO:
-1. RECONOCIMIENTO: Si el cliente dice "arroz", se refiere a "Arroz con Pollo". Usá siempre los nombres del menú.
-2. STOCK: Los productos de arriba TIENEN stock. No inventes faltantes ni límites de peso.
-3. SUGERENCIA GASTRO (Sutil):
-   - Para 2 personas: ¿Querés 1 kg o 1.5 kg? 🥘
-   - Para 3 personas: ¿Querés 1.5 kg o 2 kg? (Te recomiendo 2 kg para que no falte 😉)
-   - El objetivo es vender ese 1/2 kg extra sin ser pesado.
+💰 FINANZAS (gastos):
+- Si dicen "cargame X de gasto en Y" o "gasto de X en Y" (ej: "500 de nafta", "cargame 3000 en delivery"):
+  1. Extraé monto y descripción.
+  2. Preguntá: "¿Confirmo: $X en Y?"
+  3. Si dicen "si", "dale", "ok" → ejecutá createWaExpense con amount y description.
 
-📋 FLUJO DE CIERRE (MÁXIMA VELOCIDAD):
-1. Una vez elegidos los productos, mandá esta PLANTILLA:
-   "¡Espectacular elección! Para marchar tu pedido ya mismo, completame estos datos:
-   - *Nombre*:
-   - *¿Retiro o Delivery?*: (Si es delivery, pasame dirección)
-   - *Pago*: ¿Efectivo o Mercado Pago?"
+🚨 REGLAS:
+- Usá el ID del producto en confirmWaOrder, NUNCA el nombre.
+- Para gastos: description = concepto (nafta, delivery, limpieza, etc), amount = número.`
+    : `Local cerrado. Informá horarios con mucha onda. Respondé a todos los usuarios.
+Si piden cargar un gasto ("cargame X en Y"), extraé monto y descripción, preguntá "¿Confirmo: $X en Y?" y si confirman ejecutá createWaExpense.`;
 
-2. "TUCS" (IMPACTO INMEDIATO):
-   - Cuando tengas todo, hacé el resumen y preguntá "¿Confirmamos?".
-   - Si dice "si", "dale", "ok", EJECUTÁ 'confirmWaOrder' DE UNA. No avises que vas a registrar.
-
-🚨 REGLA TÉCNICA: Usá el ID largo (ej: 'cmlz...') en 'confirmWaOrder', NUNCA el nombre.`
-    : `Local cerrado. Informá horarios con mucha onda.`;
-
-  // 2. SOLO DEJAMOS LA HERRAMIENTA DE CONFIRMACIÓN (Eliminamos checkAvailability)
   const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     {
       type: "function",
       function: {
         name: "confirmWaOrder",
-        description: "Confirma el pedido en el sistema.",
+        description: "Confirma un pedido de comida en el sistema.",
         parameters: {
           type: "object",
           properties: {
@@ -359,6 +380,22 @@ ${menuTexto}
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "createWaExpense",
+        description: "Registra un gasto (caja chica). Usar cuando el usuario confirme un gasto.",
+        parameters: {
+          type: "object",
+          properties: {
+            amount: { type: "number", description: "Monto en pesos" },
+            description: { type: "string", description: "Concepto: nafta, delivery, limpieza, etc" },
+            category: { type: "string", description: "Opcional: categoría del gasto" },
+          },
+          required: ["amount", "description"],
+        },
+      },
+    },
   ];
 
   const sanitizedText = sanitizeUserInput(text);
@@ -373,8 +410,8 @@ ${menuTexto}
   const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
     messages,
-    tools: isOpen ? tools : undefined,
-    tool_choice: isOpen ? "auto" : undefined,
+    tools,
+    tool_choice: "auto",
     temperature: 0.3, // Precisión quirúrgica
     max_tokens: 500,
   });
@@ -394,6 +431,8 @@ ${menuTexto}
 
         if (toolCall.function.name === "confirmWaOrder") {
           result = await executeConfirmWaOrder(tenantId, jid, args);
+        } else if (toolCall.function.name === "createWaExpense") {
+          result = await executeCreateWaExpense(tenantId, args);
         } else {
           result = JSON.stringify({ error: "Unknown tool" });
         }
