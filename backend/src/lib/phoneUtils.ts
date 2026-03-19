@@ -1,7 +1,12 @@
 /**
  * Normaliza teléfonos argentinos a formato canónico: 5493794687624
- * Acepta: 3794687624, +5493794687624, 54 9 379 4687624, 03794687624, etc.
+ * Acepta: 3794687624, +543794687624, +5493794687624, 54 9 379 4687624, 03794687624, etc.
  * El formato canónico es: 549 + código de área + número (sin 15)
+ *
+ * Formatos que se consideran equivalentes:
+ * - +543795083069  (54 + área + número, sin 9 móvil)
+ * - +5493795083069 (54 + 9 + área + número)
+ * - 3795083069     (área + número local)
  */
 export function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
@@ -11,9 +16,10 @@ export function normalizePhone(raw: string): string {
   // Ya tiene formato completo: 5493794687624 (13 dígitos)
   if (digits.length === 13 && digits.startsWith("549")) return digits;
 
-  // Con + al inicio: 5493794687624
-  if (digits.length === 12 && digits.startsWith("54")) return "54" + digits.slice(2);
-  if (digits.length === 13 && digits.startsWith("549")) return digits;
+  // 12 dígitos: 54 + área + número (falta el 9 móvil) → +543795083069
+  if (digits.length === 12 && digits.startsWith("54")) {
+    return "549" + digits.slice(2);
+  }
 
   // Empieza con 0 (formato con 0 adelante): 03794687624 → 5493794687624
   if (digits.startsWith("0") && digits.length === 11) {
@@ -36,6 +42,20 @@ export function normalizePhone(raw: string): string {
  */
 export function phonesMatch(a: string, b: string): boolean {
   return normalizePhone(a) === normalizePhone(b);
+}
+
+/**
+ * Devuelve variantes para búsqueda en DB (clientes pueden estar guardados en distintos formatos)
+ */
+export function getPhoneSearchVariants(phone: string): string[] {
+  const norm = normalizePhone(phone);
+  const digits = phone.replace(/\D/g, "");
+  const variants = new Set<string>([norm, digits]);
+  if (norm.length === 13 && norm.startsWith("549")) {
+    variants.add(norm.slice(3)); // 3795083069
+    variants.add("54" + norm.slice(3)); // 543795083069
+  }
+  return [...variants];
 }
 
 /**

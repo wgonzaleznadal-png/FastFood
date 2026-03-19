@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { createError } from '@/middleware/errorHandler';
-import { normalizePhone } from '@/lib/phoneUtils';
+import { normalizePhone, getPhoneSearchVariants } from '@/lib/phoneUtils';
 import type { CreateCustomerInput, UpdateCustomerInput, CreateAddressInput, UpdateAddressInput, CreateTagInput } from './customers.schema';
 
 // ─── INCLUDES ────────────────────────────────────────────────────────────────
@@ -52,11 +52,10 @@ export async function getCustomerById(tenantId: string, id: string) {
 }
 
 export async function getCustomerByPhone(tenantId: string, phone: string) {
-  const norm = normalizePhone(phone);
+  const variants = getPhoneSearchVariants(phone);
 
-  // Buscar por teléfono normalizado o exacto
   const customer = await prisma.customer.findFirst({
-    where: { tenantId, phone: { in: [norm, phone] } },
+    where: { tenantId, phone: { in: variants } },
     include: CUSTOMER_INCLUDE,
   });
 
@@ -75,9 +74,10 @@ export async function getCustomerByPhone(tenantId: string, phone: string) {
 
 export async function createCustomer(tenantId: string, data: CreateCustomerInput) {
   const norm = normalizePhone(data.phone);
+  const variants = getPhoneSearchVariants(data.phone);
 
   const existing = await prisma.customer.findFirst({
-    where: { tenantId, phone: { in: [norm, data.phone] } },
+    where: { tenantId, phone: { in: variants } },
   });
 
   if (existing) {
@@ -154,9 +154,10 @@ export async function upsertCustomerByPhone(
   data: { name?: string; email?: string; notes?: string; address?: string }
 ) {
   const norm = normalizePhone(phone);
+  const variants = getPhoneSearchVariants(phone);
 
   const existing = await prisma.customer.findFirst({
-    where: { tenantId, phone: { in: [norm, phone] } },
+    where: { tenantId, phone: { in: variants } },
   });
 
   if (existing) {
