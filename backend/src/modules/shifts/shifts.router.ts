@@ -199,6 +199,7 @@ router.get("/:id/summary", async (req: Request, res: Response, next: NextFunctio
       totalSales: 0,
       totalExpenses: 0,
       cashDrawerExpenses: 0,
+      cashSalesCountedForDrawer: 0,
       manualCashIncomeTotal: 0,
       manualIncomes: [],
       unpaidOrders: [],

@@ -248,6 +248,12 @@ shiftClosing?: {
 
   cashSalesLocal?: number;
 
+  /** Total efectivo ventas que entra al cálculo del cajón (sin rendición: retiro+delivery). */
+  cashSalesCountedForDrawer?: number;
+
+  /** Ingresos al turno registrados como efectivo (PIN / manual). */
+  manualCashIncomeTotal?: number;
+
   billCounts?: Record<string, number>;
 
 };
@@ -542,14 +548,22 @@ if (data.shiftClosing) {
   ticket += DOUBLE_HEIGHT + BOLD_ON;
   ticket += 'CUADRE DE CAJA' + NEWLINE;
   ticket += NORMAL_TEXT + BOLD_OFF;
-  const localCash = c.cashSalesLocal ?? (c.paymentMethods.find(m => m.name === 'EFECTIVO')?.amount || 0);
+  const fallbackEfectivo = c.paymentMethods.find(m => m.name === 'EFECTIVO')?.amount || 0;
   ticket += 'Caja Inicial:       ' + formatPrice(c.initialCash) + NEWLINE;
-  ticket += '+ Efectivo Local:   ' + formatPrice(localCash) + NEWLINE;
+  if (c.deliverySettlement) {
+    ticket += '+ Efectivo retiro:  ' + formatPrice(c.cashSalesLocal ?? 0) + NEWLINE;
+    ticket += '+ Rend. Delivery:   ' + formatPrice(c.deliverySettlement.amount) + NEWLINE;
+  } else {
+    ticket += '+ Efectivo ventas:  ' + formatPrice(
+      c.cashSalesCountedForDrawer ?? c.cashSalesLocal ?? fallbackEfectivo,
+    ) + NEWLINE;
+  }
+  const manualEf = Number(c.manualCashIncomeTotal ?? 0);
+  if (manualEf > 0) {
+    ticket += '+ Ing. manual (ef): ' + formatPrice(manualEf) + NEWLINE;
+  }
   if (c.totalExpenses > 0) {
     ticket += '- Egresos:          ' + formatPrice(c.totalExpenses) + NEWLINE;
-  }
-  if (c.deliverySettlement) {
-    ticket += '+ Rend. Delivery:   ' + formatPrice(c.deliverySettlement.amount) + NEWLINE;
   }
   ticket += linea + NEWLINE;
   ticket += BOLD_ON + 'Esperado:  ' + formatPrice(c.expectedCash) + BOLD_OFF + NEWLINE;

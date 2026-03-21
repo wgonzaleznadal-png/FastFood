@@ -349,21 +349,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <Text size="xs" c="dimmed" mb={4}>EN CAJA (EFECTIVO)</Text>
                         <Text fw={700} size="lg" c="blue">
                           ${shiftSummary
-                            ? (
-                                Number(activeShift.initialCash) +
-                                Number(shiftSummary.cashSalesLocal || 0) +
-                                Number(shiftSummary.manualCashIncomeTotal || 0) -
-                                Number(
-                                  shiftSummary.cashDrawerExpenses != null
-                                    ? shiftSummary.cashDrawerExpenses
-                                    : shiftSummary.totalExpenses || 0,
-                                ) +
-                                Number(
+                            ? (() => {
+                                const rend = Number(
                                   shiftSummary.shift?.deliverySettlementAmount ||
                                     activeShift.deliverySettlementAmount ||
                                     0,
-                                )
-                              ).toFixed(0)
+                                );
+                                const ventasEfectivoCajon =
+                                  shiftSummary.cashSalesCountedForDrawer != null &&
+                                  shiftSummary.cashSalesCountedForDrawer !== ""
+                                    ? Number(shiftSummary.cashSalesCountedForDrawer)
+                                    : rend > 0
+                                      ? Number(shiftSummary.cashSalesLocal || 0) + rend
+                                      : Number(shiftSummary.cashSalesLocal || 0) +
+                                        Number(shiftSummary.cashSalesDelivery || 0);
+                                return (
+                                  Number(activeShift.initialCash) +
+                                  ventasEfectivoCajon +
+                                  Number(shiftSummary.manualCashIncomeTotal || 0) -
+                                  Number(
+                                    shiftSummary.cashDrawerExpenses != null
+                                      ? shiftSummary.cashDrawerExpenses
+                                      : shiftSummary.totalExpenses || 0,
+                                  )
+                                ).toFixed(0);
+                              })()
                             : "0"}
                         </Text>
                       </Paper>

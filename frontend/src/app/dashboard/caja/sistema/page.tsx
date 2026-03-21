@@ -77,6 +77,8 @@ interface ShiftSummary {
   ingresos: number;
   cashSalesLocal: number;
   cashSalesDelivery: number;
+  /** Efectivo de ventas que cuenta para el cajón (retiro+delivery si no hay rendición; retiro+rendición si hay). */
+  cashSalesCountedForDrawer: number;
   manualCashIncomeTotal: number;
   /** Egresos que salen del cajón (efectivo). */
   egresos: number;
@@ -217,8 +219,15 @@ export default function SistemaCajaPage() {
       } else if (rendicionDelivery > 0 && rendicionDeliveryExpected > 0) {
         rendicionDeliveryDiff = rendicionDelivery - rendicionDeliveryExpected;
       }
+      const cashSalesCountedForDrawer =
+        data.cashSalesCountedForDrawer != null && String(data.cashSalesCountedForDrawer) !== ""
+          ? Number(data.cashSalesCountedForDrawer)
+          : rendicionDelivery > 0
+            ? cashLocal + rendicionDelivery
+            : cashLocal + cashDelivery;
+
       const enCaja =
-        Number(activeShift.initialCash) + cashLocal + manualCashIncomeTotal - egresosCajon + rendicionDelivery;
+        Number(activeShift.initialCash) + cashSalesCountedForDrawer + manualCashIncomeTotal - egresosCajon;
 
       const paymentMethods = (data.paymentMethods || []).map((pm: any) => ({
         ...pm,
@@ -231,6 +240,7 @@ export default function SistemaCajaPage() {
         ingresos: Number(data.totalSales || 0),
         cashSalesLocal: cashLocal,
         cashSalesDelivery: cashDelivery,
+        cashSalesCountedForDrawer,
         manualCashIncomeTotal,
         egresos: egresosCajon,
         egresosSinEfectivo,
@@ -380,6 +390,8 @@ export default function SistemaCajaPage() {
               difference: summary.rendicionDeliveryDiff,
             } : null,
             cashSalesLocal: summary.cashSalesLocal,
+            cashSalesCountedForDrawer: summary.cashSalesCountedForDrawer,
+            manualCashIncomeTotal: summary.manualCashIncomeTotal,
             finalCash: totalBilletes,
             expectedCash: Number(closeResult.expectedCash),
             difference: Number(closeResult.difference),
@@ -423,10 +435,9 @@ export default function SistemaCajaPage() {
 
   const expectedCash =
     Number(activeShift.initialCash) +
-    summary.cashSalesLocal +
+    summary.cashSalesCountedForDrawer +
     summary.manualCashIncomeTotal -
-    summary.egresos +
-    summary.rendicionDelivery;
+    summary.egresos;
   const previewDifference = totalBilletes - expectedCash;
 
   return (
@@ -791,10 +802,23 @@ export default function SistemaCajaPage() {
                   <Text size="sm" c="dimmed">Caja Inicial</Text>
                   <Text size="sm" fw={600}>{fmt(Number(activeShift.initialCash))}</Text>
                 </Group>
-                <Group justify="space-between">
-                  <Text size="sm" c="dimmed">+ Efectivo Local (retiro)</Text>
-                  <Text size="sm" fw={600} c="green">{fmt(summary.cashSalesLocal)}</Text>
-                </Group>
+                {summary.rendicionDelivery > 0 ? (
+                  <>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">+ Efectivo retiro (local)</Text>
+                      <Text size="sm" fw={600} c="green">{fmt(summary.cashSalesLocal)}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">+ Rendición delivery (a caja)</Text>
+                      <Text size="sm" fw={600} c="blue">{fmt(summary.rendicionDelivery)}</Text>
+                    </Group>
+                  </>
+                ) : (
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">+ Efectivo ventas (retiro + delivery)</Text>
+                    <Text size="sm" fw={600} c="green">{fmt(summary.cashSalesCountedForDrawer)}</Text>
+                  </Group>
+                )}
                 {summary.manualCashIncomeTotal > 0 && (
                   <Group justify="space-between">
                     <Text size="sm" c="dimmed">+ Ingresos manuales (efectivo)</Text>
@@ -805,12 +829,6 @@ export default function SistemaCajaPage() {
                   <Group justify="space-between">
                     <Text size="sm" c="dimmed">− Egresos (solo efectivo en caja)</Text>
                     <Text size="sm" fw={600} c="red">-{fmt(summary.egresos)}</Text>
-                  </Group>
-                )}
-                {summary.rendicionDelivery > 0 && (
-                  <Group justify="space-between">
-                    <Text size="sm" c="dimmed">+ Rendición Delivery</Text>
-                    <Text size="sm" fw={600} c="blue">{fmt(summary.rendicionDelivery)}</Text>
                   </Group>
                 )}
                 <Divider my={4} />

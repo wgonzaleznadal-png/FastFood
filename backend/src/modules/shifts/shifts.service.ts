@@ -11,7 +11,7 @@ import {
   AddInitialCashInput,
   ManualShiftIncomeInput,
 } from "./shifts.schema";
-import { canonicalPaymentMethod, isCashDrawerPaymentMethod } from "@/lib/paymentMethod";
+import { canonicalPaymentMethod, isCashDrawerPaymentMethod, cashSalesForPhysicalDrawer } from "@/lib/paymentMethod";
 import { notifyOrderStatusChange } from "../whatsapp/whatsapp.notifications";
 
 export async function openShift(tenantId: string, userId: string, input: OpenShiftInput) {
@@ -98,9 +98,11 @@ export async function closeShift(
     select: { totalPrice: true, paymentMethod: true, isDelivery: true },
   });
 
-  // Solo efectivo de LOCAL/retiro (lo que el cajero recibió directamente)
   const localCashSales = paidOrders
     .filter((o) => o.paymentMethod === "EFECTIVO" && !o.isDelivery)
+    .reduce((sum, o) => sum + Number(o.totalPrice), 0);
+  const deliveryCashSales = paidOrders
+    .filter((o) => o.paymentMethod === "EFECTIVO" && o.isDelivery)
     .reduce((sum, o) => sum + Number(o.totalPrice), 0);
 
   const cashExpenses = await prisma.expense.findMany({
@@ -119,16 +121,25 @@ export async function closeShift(
     .filter((m) => canonicalPaymentMethod(m.paymentMethod) === "EFECTIVO")
     .reduce((sum, m) => sum + Number(m.amount), 0);
 
-  // Rendición = lo que el encargado de delivery entregó físicamente al cajero
   const deliverySettlement = Number(shift.deliverySettlementAmount ?? 0);
+  const cashFromSales = cashSalesForPhysicalDrawer(localCashSales, deliveryCashSales, deliverySettlement);
 
-  // Cajón = Inicial + Efectivo local + Ingresos efectivo manuales + Rendición − Egresos en efectivo
+  // Cajón = Inicial + Efectivo ventas (según modelo delivery) + Ingresos efectivo manuales − Egresos en efectivo
   const expectedPhysicalCash =
-    Number(shift.initialCash) + localCashSales + manualCashInTotal - expensesTotal + deliverySettlement;
+    Number(shift.initialCash) + cashFromSales + manualCashInTotal - expensesTotal;
   const difference = input.finalCash - expectedPhysicalCash;
 
   if (process.env.NODE_ENV === "development") {
-    console.log("[closeShift] Calc:", { localCashSales, expensesTotal, deliverySettlement, expectedPhysicalCash, finalCash: input.finalCash, difference });
+    console.log("[closeShift] Calc:", {
+      localCashSales,
+      deliveryCashSales,
+      deliverySettlement,
+      cashFromSales,
+      expensesTotal,
+      expectedPhysicalCash,
+      finalCash: input.finalCash,
+      difference,
+    });
   }
 
   // Desvincular cadetes de pedidos y eliminar cadetes temporales
@@ -352,6 +363,12 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
   const cashSalesDelivery = paidOrders
     .filter((o) => o.paymentMethod === "EFECTIVO" && o.isDelivery)
     .reduce((sum, o) => sum + Number(o.totalPrice), 0);
+  const deliverySettlementAmount = Number(shift.deliverySettlementAmount ?? 0);
+  const cashSalesCountedForDrawer = cashSalesForPhysicalDrawer(
+    cashSalesLocal,
+    cashSalesDelivery,
+    deliverySettlementAmount
+  );
 
   return {
     shift: {
@@ -453,6 +470,8 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
     })),
     cashSalesLocal,
     cashSalesDelivery,
+    /** Efectivo de ventas que entra en el cálculo del cajón (ver modelo con/sin rendición delivery). */
+    cashSalesCountedForDrawer,
     /** Ingresos manuales en efectivo (suman al esperado en cajón). */
     manualCashIncomeTotal,
     /** Egresos de caja cargados por el usuario que cerró delivery (si hay rendición con userId) */
