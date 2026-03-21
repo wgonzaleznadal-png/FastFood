@@ -1,7 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { createError } from "@/middleware/errorHandler";
 import { logAudit } from "@/lib/auditLog";
-import { OpenShiftInput, CloseShiftInput, CashExpenseInput, AddCollaboratorInput, CreateCadeteInput, CloseDeliveryInput, AddInitialCashInput } from "./shifts.schema";
+import {
+  OpenShiftInput,
+  CloseShiftInput,
+  CashExpenseInput,
+  AddCollaboratorInput,
+  CreateCadeteInput,
+  CloseDeliveryInput,
+  AddInitialCashInput,
+  ManualShiftIncomeInput,
+} from "./shifts.schema";
+import { canonicalPaymentMethod, isCashDrawerPaymentMethod } from "@/lib/paymentMethod";
 import { notifyOrderStatusChange } from "../whatsapp/whatsapp.notifications";
 
 export async function openShift(tenantId: string, userId: string, input: OpenShiftInput) {
@@ -95,15 +105,26 @@ export async function closeShift(
 
   const cashExpenses = await prisma.expense.findMany({
     where: { shiftId, type: "CASH" },
-    select: { amount: true },
+    select: { amount: true, paymentMethod: true },
   });
-  const expensesTotal = cashExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const expensesTotal = cashExpenses
+    .filter((e) => isCashDrawerPaymentMethod(e.paymentMethod))
+    .reduce((sum, e) => sum + Number(e.amount), 0);
+
+  const manualCashIn = await prisma.shiftManualIncome.findMany({
+    where: { shiftId, tenantId },
+    select: { amount: true, paymentMethod: true },
+  });
+  const manualCashInTotal = manualCashIn
+    .filter((m) => canonicalPaymentMethod(m.paymentMethod) === "EFECTIVO")
+    .reduce((sum, m) => sum + Number(m.amount), 0);
 
   // Rendición = lo que el encargado de delivery entregó físicamente al cajero
   const deliverySettlement = Number(shift.deliverySettlementAmount ?? 0);
 
-  // Cajón = Inicial + Efectivo Local + Rendición Delivery - Gastos
-  const expectedPhysicalCash = Number(shift.initialCash) + localCashSales - expensesTotal + deliverySettlement;
+  // Cajón = Inicial + Efectivo local + Ingresos efectivo manuales + Rendición − Egresos en efectivo
+  const expectedPhysicalCash =
+    Number(shift.initialCash) + localCashSales + manualCashInTotal - expensesTotal + deliverySettlement;
   const difference = input.finalCash - expectedPhysicalCash;
 
   if (process.env.NODE_ENV === "development") {
@@ -271,26 +292,53 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
   });
 
   const paidOrders = allOrders.filter((o) => o.isPaid);
-  const totalSales = paidOrders.reduce((sum, o) => sum + Number(o.totalPrice), 0);
+  const orderSalesTotal = paidOrders.reduce((sum, o) => sum + Number(o.totalPrice), 0);
 
   const methodsMap = paidOrders.reduce((acc, o) => {
-    const method = o.paymentMethod || "EFECTIVO";
+    const method = canonicalPaymentMethod(o.paymentMethod);
     acc[method] = (acc[method] || 0) + Number(o.totalPrice);
     return acc;
   }, {} as Record<string, number>);
 
-  const paymentMethods = Object.entries(methodsMap).map(([name, amount]) => ({
-    id: name.toLowerCase().replace(/\s+/g, "_"),
-    name,
-    amount,
-  }));
+  const manualIncomes = await prisma.shiftManualIncome.findMany({
+    where: { tenantId, shiftId },
+    orderBy: { createdAt: "asc" },
+  });
+  const manualSalesTotal = manualIncomes.reduce((s, m) => s + Number(m.amount), 0);
+  const manualCashIncomeTotal = manualIncomes
+    .filter((m) => canonicalPaymentMethod(m.paymentMethod) === "EFECTIVO")
+    .reduce((s, m) => s + Number(m.amount), 0);
+  for (const mi of manualIncomes) {
+    const method = canonicalPaymentMethod(mi.paymentMethod);
+    methodsMap[method] = (methodsMap[method] || 0) + Number(mi.amount);
+  }
 
   const expensesList = await prisma.expense.findMany({
     where: { shiftId, type: "CASH" },
-    select: { id: true, description: true, amount: true, notes: true, createdAt: true },
+    select: { id: true, description: true, amount: true, notes: true, createdAt: true, paymentMethod: true },
     orderBy: { createdAt: "asc" },
   });
   const totalExpenses = expensesList.reduce((sum, e) => sum + Number(e.amount), 0);
+  const cashDrawerExpenses = expensesList
+    .filter((e) => isCashDrawerPaymentMethod(e.paymentMethod))
+    .reduce((sum, e) => sum + Number(e.amount), 0);
+
+  for (const e of expensesList) {
+    if (!isCashDrawerPaymentMethod(e.paymentMethod)) {
+      const pm = canonicalPaymentMethod(e.paymentMethod);
+      methodsMap[pm] = (methodsMap[pm] || 0) - Number(e.amount);
+    }
+  }
+
+  const paymentMethods = Object.entries(methodsMap)
+    .filter(([, amount]) => amount !== 0)
+    .map(([name, amount]) => ({
+      id: name.toLowerCase().replace(/\s+/g, "_"),
+      name,
+      amount,
+    }));
+
+  const totalSales = orderSalesTotal + manualSalesTotal;
 
   const cancelledOrders = allOrders.filter((o) => o.status === "CANCELLED");
   const deliveryOrders = allOrders.filter((o) => o.isDelivery && o.status !== "CANCELLED");
@@ -331,7 +379,17 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
     },
     totalSales,
     totalExpenses,
+    /** Solo egresos que salen del cajón (efectivo) — para cuadrar billetes. */
+    cashDrawerExpenses,
     paymentMethods,
+    manualIncomes: manualIncomes.map((m) => ({
+      id: m.id,
+      amount: Number(m.amount),
+      paymentMethod: m.paymentMethod,
+      description: m.description,
+      notes: m.notes,
+      createdAt: m.createdAt,
+    })),
     orders: allOrders.map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
@@ -357,6 +415,7 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
       amount: Number(e.amount),
       notes: e.notes,
       createdAt: e.createdAt,
+      paymentMethod: canonicalPaymentMethod(e.paymentMethod),
     })),
     productSummary: (() => {
       const map: Record<string, { kg: number; units: number; revenue: number }> = {};
@@ -382,6 +441,8 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
     },
     cashSalesLocal,
     cashSalesDelivery,
+    /** Ingresos manuales en efectivo (suman al esperado en cajón). */
+    manualCashIncomeTotal,
     /** Egresos de caja cargados por el usuario que cerró delivery (si hay rendición con userId) */
     deliveryCadeteEgresos: shift.deliverySettlementUserId
       ? Number(
@@ -392,6 +453,7 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
                 shiftId,
                 type: "CASH",
                 userId: shift.deliverySettlementUserId,
+                OR: [{ paymentMethod: null }, { paymentMethod: "EFECTIVO" }],
               },
               _sum: { amount: true },
             })
@@ -422,8 +484,65 @@ export async function createCashExpense(
       description: input.description,
       amount: input.amount,
       notes: input.notes,
+      paymentMethod: input.paymentMethod,
     },
   });
+}
+
+export async function createManualShiftIncome(
+  tenantId: string,
+  userId: string,
+  input: ManualShiftIncomeInput
+) {
+  const shift = await prisma.shift.findFirst({
+    where: { id: input.shiftId, tenantId, status: "OPEN" },
+  });
+  if (!shift) throw createError("Turno no encontrado o cerrado", 404);
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { adminPin: true },
+  });
+  if (tenant?.adminPin) {
+    if (!input.pin) throw createError("Ingresá el PIN de administrador", 400);
+    const { validateAdminPin } = await import("@/modules/config/config.service");
+    const ok = await validateAdminPin(tenantId, input.pin);
+    if (!ok) throw createError("PIN de administrador incorrecto", 401);
+  }
+
+  const row = await prisma.shiftManualIncome.create({
+    data: {
+      tenantId,
+      shiftId: input.shiftId,
+      userId,
+      amount: input.amount,
+      paymentMethod: input.paymentMethod,
+      description: input.description.trim(),
+      notes: input.notes?.trim() || null,
+    },
+  });
+
+  void logAudit({
+    tenantId,
+    userId,
+    action: "SHIFT_MANUAL_INCOME",
+    entity: "shift",
+    entityId: input.shiftId,
+    metadata: {
+      amount: input.amount,
+      paymentMethod: input.paymentMethod,
+      description: input.description.trim(),
+    },
+  });
+
+  return {
+    id: row.id,
+    amount: Number(row.amount),
+    paymentMethod: row.paymentMethod,
+    description: row.description,
+    notes: row.notes,
+    createdAt: row.createdAt,
+  };
 }
 
 export async function listCashExpenses(tenantId: string, shiftId: string) {
@@ -442,6 +561,7 @@ export async function listCashExpenses(tenantId: string, shiftId: string) {
     amount: Number(e.amount),
     currency: e.currency,
     notes: e.notes,
+    paymentMethod: canonicalPaymentMethod(e.paymentMethod),
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
   }));

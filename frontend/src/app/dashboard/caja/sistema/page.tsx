@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useShiftStore } from "@/store/shiftStore";
 import { useAuthStore } from "@/store/authStore";
 import {
-  Text, Button, Group, Stack, Paper, SimpleGrid, Loader, Center, Divider, Badge, NumberInput, TextInput, Textarea, ScrollArea, Alert,
+  Text, Button, Group, Stack, Paper, SimpleGrid, Loader, Center, Divider, Badge, NumberInput, TextInput, Textarea, ScrollArea, Alert, Select,
 } from "@mantine/core";
 import {
   IconCash, IconTrendingUp, IconTrendingDown, IconWallet, IconX,
@@ -14,8 +14,10 @@ import {
 } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
-import { fmt, moneyNumberInputProps } from "@/lib/format";
+import { fmt, moneyNumberInputProps, parseMoneyInput } from "@/lib/format";
 import AddInitialCashDrawer from "@/components/caja/AddInitialCashDrawer";
+import ManualShiftIncomeDrawer from "@/components/caja/ManualShiftIncomeDrawer";
+import { SHIFT_LEDGER_PAYMENT_OPTIONS, ledgerMethodShortLabel } from "@/lib/shiftLedgerPaymentMethods";
 import { ThermalPrinter } from "@/lib/thermalPrinter";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
@@ -46,6 +48,16 @@ interface ExpenseSummary {
   description: string;
   amount: number;
   notes: string | null;
+  paymentMethod?: string;
+  createdAt: string;
+}
+
+interface ManualIncomeSummary {
+  id: string;
+  amount: number;
+  paymentMethod: string;
+  description: string;
+  notes: string | null;
   createdAt: string;
 }
 
@@ -53,7 +65,11 @@ interface ShiftSummary {
   ingresos: number;
   cashSalesLocal: number;
   cashSalesDelivery: number;
+  manualCashIncomeTotal: number;
+  /** Egresos que salen del cajón (efectivo). */
   egresos: number;
+  /** Egresos registrados MP/tarjeta/transf. (no bajan billetes). */
+  egresosSinEfectivo: number;
   enCaja: number;
   rendicionDelivery: number;
   /** Efectivo delivery que debía entregar el cadete (según pedidos / sistema) */
@@ -67,6 +83,7 @@ interface ShiftSummary {
   paymentMethods: PaymentMethod[];
   orders: OrderSummary[];
   expenses: ExpenseSummary[];
+  manualIncomes: ManualIncomeSummary[];
   counts: {
     total: number;
     paid: number;
@@ -108,12 +125,14 @@ export default function SistemaCajaPage() {
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [closeDrawerOpen, setCloseDrawerOpen] = useState(false);
   const [addCambioDrawerOpen, setAddCambioDrawerOpen] = useState(false);
+  const [manualIncomeOpen, setManualIncomeOpen] = useState(false);
   const [egresoDrawerOpen, setEgresoDrawerOpen] = useState(false);
   const [closing, setClosing] = useState(false);
 
   const [billCounts, setBillCounts] = useState<Record<string, number>>(emptyBillCounts);
 
-  const [egresoAmount, setEgresoAmount] = useState<number | string>("");
+  const [egresoAmount, setEgresoAmount] = useState(0);
+  const [egresoPaymentMethod, setEgresoPaymentMethod] = useState("EFECTIVO");
   const [egresoDescription, setEgresoDescription] = useState("");
   const [egresoNotes, setEgresoNotes] = useState("");
   const [savingEgreso, setSavingEgreso] = useState(false);
@@ -172,7 +191,12 @@ export default function SistemaCajaPage() {
 
       const cashLocal = Number(data.cashSalesLocal || 0);
       const cashDelivery = Number(data.cashSalesDelivery || 0);
-      const egresos = Number(data.totalExpenses || 0);
+      const manualCashIncomeTotal = Number(data.manualCashIncomeTotal || 0);
+      const totalEgresosRegistrados = Number(data.totalExpenses || 0);
+      const egresosCajon = Number(
+        data.cashDrawerExpenses != null ? data.cashDrawerExpenses : data.totalExpenses || 0,
+      );
+      const egresosSinEfectivo = Math.max(0, totalEgresosRegistrados - egresosCajon);
       const rendicionDelivery = Number(data.shift?.deliverySettlementAmount || activeShift.deliverySettlementAmount || 0);
       const rendicionDeliveryCadeteEgresos = Number(data.deliveryCadeteEgresos ?? 0);
       const fromDbExpected = data.shift?.deliverySettlementExpectedCash != null
@@ -190,8 +214,9 @@ export default function SistemaCajaPage() {
       } else if (rendicionDelivery > 0 && rendicionDeliveryExpected > 0) {
         rendicionDeliveryDiff = rendicionDelivery - rendicionDeliveryExpected;
       }
-      // Cajón = Inicial + Efectivo LOCAL + Rendición Delivery - Egresos
-      const enCaja = Number(activeShift.initialCash) + cashLocal - egresos + rendicionDelivery;
+      // Cajón = Inicial + Efectivo LOCAL + Rendición − solo egresos en efectivo
+      const enCaja =
+        Number(activeShift.initialCash) + cashLocal + manualCashIncomeTotal - egresosCajon + rendicionDelivery;
 
       const paymentMethods = (data.paymentMethods || []).map((pm: any) => ({
         ...pm,
@@ -203,7 +228,9 @@ export default function SistemaCajaPage() {
         ingresos: Number(data.totalSales || 0),
         cashSalesLocal: cashLocal,
         cashSalesDelivery: cashDelivery,
-        egresos,
+        manualCashIncomeTotal,
+        egresos: egresosCajon,
+        egresosSinEfectivo,
         enCaja,
         rendicionDelivery,
         rendicionDeliveryExpected,
@@ -214,6 +241,7 @@ export default function SistemaCajaPage() {
         paymentMethods,
         orders: data.orders || [],
         expenses: data.expenses || [],
+        manualIncomes: data.manualIncomes || [],
         counts: data.counts || { total: 0, paid: 0, cancelled: 0, delivery: 0, local: 0 },
       });
     } catch (err) {
@@ -224,7 +252,7 @@ export default function SistemaCajaPage() {
   }, [activeShift]);
 
   const handleCreateExpense = async () => {
-    if (!activeShift || !egresoAmount || !egresoDescription.trim()) {
+    if (!activeShift || !egresoAmount || egresoAmount <= 0 || !egresoDescription.trim()) {
       notifications.show({ title: "Error", message: "Completá monto y concepto", color: "red" });
       return;
     }
@@ -232,13 +260,15 @@ export default function SistemaCajaPage() {
     try {
       await api.post("/shifts/expenses", {
         shiftId: activeShift.id,
-        amount: Number(egresoAmount),
+        amount: egresoAmount,
+        paymentMethod: egresoPaymentMethod,
         description: egresoDescription.trim(),
         notes: egresoNotes.trim() || undefined,
       });
-      notifications.show({ title: "Egreso registrado", message: fmt(Number(egresoAmount)), color: "green" });
+      notifications.show({ title: "Egreso registrado", message: fmt(egresoAmount), color: "green" });
       setEgresoDrawerOpen(false);
-      setEgresoAmount("");
+      setEgresoAmount(0);
+      setEgresoPaymentMethod("EFECTIVO");
       setEgresoDescription("");
       setEgresoNotes("");
       fetchSummary();
@@ -341,7 +371,12 @@ export default function SistemaCajaPage() {
 
   if (!activeShift || !summary) return null;
 
-  const expectedCash = Number(activeShift.initialCash) + summary.cashSalesLocal - summary.egresos + summary.rendicionDelivery;
+  const expectedCash =
+    Number(activeShift.initialCash) +
+    summary.cashSalesLocal +
+    summary.manualCashIncomeTotal -
+    summary.egresos +
+    summary.rendicionDelivery;
   const previewDifference = totalBilletes - expectedCash;
 
   return (
@@ -351,6 +386,9 @@ export default function SistemaCajaPage() {
           <Group gap="sm">
             <Button color="orange" leftSection={<IconTrendingDown size={16} />} onClick={() => setEgresoDrawerOpen(true)}>
               Nuevo Egreso
+            </Button>
+            <Button variant="light" color="green" leftSection={<IconBuildingBank size={16} />} onClick={() => setManualIncomeOpen(true)}>
+              Ingreso manual
             </Button>
             <Button variant="light" color="teal" leftSection={<IconCash size={16} />} onClick={() => setAddCambioDrawerOpen(true)}>
               Agregar cambio
@@ -388,8 +426,12 @@ export default function SistemaCajaPage() {
             <Text fw={700} size="xl" c="green">{fmt(summary.ingresos)}</Text>
           </Paper>
           <Paper p="md" radius="md" style={{ background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
-            <Text size="xs" c="dimmed" mb={4}>EGRESOS</Text>
-            <Text fw={700} size="xl" c="red">{fmt(summary.egresos)}</Text>
+            <Text size="xs" c="dimmed" mb={4}>EGRESOS REGISTRADOS</Text>
+            <Text fw={700} size="xl" c="red">{fmt(summary.egresos + summary.egresosSinEfectivo)}</Text>
+            <Text size="xs" c="dimmed" mt={4}>
+              Del cajón (efectivo): {fmt(summary.egresos)}
+              {summary.egresosSinEfectivo > 0 ? ` · Otros medios: ${fmt(summary.egresosSinEfectivo)}` : ""}
+            </Text>
           </Paper>
           <Paper p="md" radius="md" style={{ background: "rgba(59, 130, 246, 0.05)", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
             <Text size="xs" c="dimmed" mb={4}>EN CAJA (EFECTIVO)</Text>
@@ -491,6 +533,28 @@ export default function SistemaCajaPage() {
         </Stack>
       </Paper>
 
+      {summary.manualIncomes.length > 0 && (
+        <Paper className="gd-card" p="lg" mb="lg">
+          <Group gap="xs" mb="md">
+            <IconBuildingBank size={20} />
+            <Text fw={700}>Ingresos manuales al turno</Text>
+          </Group>
+          <Stack gap="xs">
+            {summary.manualIncomes.map((row) => (
+              <Group key={row.id} justify="space-between" p="sm" style={{ background: "var(--gd-bg-secondary)", borderRadius: "8px", border: "1px solid var(--gd-border)" }}>
+                <Stack gap={2}>
+                  <Text size="sm" fw={500}>{row.description}</Text>
+                  <Text size="xs" c="dimmed">
+                    {ledgerMethodShortLabel(row.paymentMethod)} · {new Date(row.createdAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
+                  </Text>
+                </Stack>
+                <Text fw={700} size="sm" c="green">{fmt(row.amount)}</Text>
+              </Group>
+            ))}
+          </Stack>
+        </Paper>
+      )}
+
       {/* ═══ DRAWER: CERRAR CAJA ═══ */}
       <Drawer
         opened={closeDrawerOpen}
@@ -571,12 +635,22 @@ export default function SistemaCajaPage() {
                   <Stack gap={4}>
                     {summary.expenses.map((exp) => (
                       <Group key={exp.id} justify="space-between" p="xs" style={{ background: "var(--gd-bg-secondary)", borderRadius: "6px" }}>
-                        <Text size="sm">{exp.description}</Text>
+                        <Group gap="xs">
+                          <Text size="sm">{exp.description}</Text>
+                          {exp.paymentMethod && (
+                            <Badge size="xs" variant="outline" color="gray">{ledgerMethodShortLabel(exp.paymentMethod)}</Badge>
+                          )}
+                        </Group>
                         <Text size="sm" fw={600} c="red">-{fmt(exp.amount)}</Text>
                       </Group>
                     ))}
                     <Group justify="flex-end">
-                      <Text size="sm" fw={700}>Total Egresos: <Text span c="red" fw={700}>-{fmt(summary.egresos)}</Text></Text>
+                      <Text size="sm" fw={700}>
+                        Total egresos:{" "}
+                        <Text span c="red" fw={700}>
+                          -{fmt(summary.expenses.reduce((s, e) => s + e.amount, 0))}
+                        </Text>
+                      </Text>
                     </Group>
                   </Stack>
                 </div>
@@ -652,9 +726,15 @@ export default function SistemaCajaPage() {
                   <Text size="sm" c="dimmed">+ Efectivo Local (retiro)</Text>
                   <Text size="sm" fw={600} c="green">{fmt(summary.cashSalesLocal)}</Text>
                 </Group>
+                {summary.manualCashIncomeTotal > 0 && (
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">+ Ingresos manuales (efectivo)</Text>
+                    <Text size="sm" fw={600} c="green">{fmt(summary.manualCashIncomeTotal)}</Text>
+                  </Group>
+                )}
                 {summary.egresos > 0 && (
                   <Group justify="space-between">
-                    <Text size="sm" c="dimmed">− Egresos</Text>
+                    <Text size="sm" c="dimmed">− Egresos (solo efectivo en caja)</Text>
                     <Text size="sm" fw={600} c="red">-{fmt(summary.egresos)}</Text>
                   </Group>
                 )}
@@ -766,8 +846,15 @@ export default function SistemaCajaPage() {
             placeholder="0,00"
             min={0.01}
             value={egresoAmount}
-            onChange={setEgresoAmount}
+            onChange={(v) => setEgresoAmount(parseMoneyInput(v))}
             {...moneyNumberInputProps}
+          />
+          <Select
+            label="Pagado con"
+            description="Solo efectivo descuenta billetes físicos. MP/tarjeta/transferencia ajustan el resumen por método."
+            data={[...SHIFT_LEDGER_PAYMENT_OPTIONS]}
+            value={egresoPaymentMethod}
+            onChange={(v) => setEgresoPaymentMethod(v || "EFECTIVO")}
           />
           <TextInput
             label="Concepto"
@@ -794,7 +881,12 @@ export default function SistemaCajaPage() {
                 {summary.expenses.map((exp) => (
                   <Group key={exp.id} justify="space-between" p="xs" style={{ border: "1px solid var(--gd-border)", borderRadius: "var(--gd-radius-sm)" }}>
                     <Stack gap={2} style={{ flex: 1 }}>
-                      <Text size="sm" fw={600}>{exp.description}</Text>
+                      <Group gap="xs">
+                        <Text size="sm" fw={600}>{exp.description}</Text>
+                        {exp.paymentMethod && (
+                          <Badge size="xs" variant="light" color="gray">{ledgerMethodShortLabel(exp.paymentMethod)}</Badge>
+                        )}
+                      </Group>
                       {exp.notes && <Text size="xs" c="dimmed">{exp.notes}</Text>}
                     </Stack>
                     <Group gap="xs">
@@ -822,6 +914,15 @@ export default function SistemaCajaPage() {
           onClose={() => setAddCambioDrawerOpen(false)}
           shiftId={activeShift.id}
           currentInitialCash={Number(activeShift.initialCash)}
+          onSuccess={() => fetchSummary()}
+        />
+      )}
+
+      {activeShift && (
+        <ManualShiftIncomeDrawer
+          opened={manualIncomeOpen}
+          onClose={() => setManualIncomeOpen(false)}
+          shiftId={activeShift.id}
           onSuccess={() => fetchSummary()}
         />
       )}

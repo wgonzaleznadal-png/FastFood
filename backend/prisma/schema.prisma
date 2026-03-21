@@ -24,6 +24,7 @@ model Tenant {
   tables             Table[]
   shifts             Shift[]
   expenses           Expense[]
+  shiftManualIncomes ShiftManualIncome[]
   cadetes            Cadete[]
   shiftCollaborators ShiftCollaborator[]
   waSessionStates    WaSessionState[]
@@ -50,6 +51,7 @@ model User {
   orders              Order[]
   shiftsOpened        Shift[]             @relation("ShiftOpener")
   expenses            Expense[]
+  shiftManualIncomes  ShiftManualIncome[]
   shiftCollaborations ShiftCollaborator[]
   refreshTokens       RefreshToken[]
 
@@ -154,10 +156,32 @@ model Shift {
   openedBy      User                @relation("ShiftOpener", fields: [openedById], references: [id])
   orders        Order[]
   expenses      Expense[]
-  collaborators ShiftCollaborator[]
+  collaborators      ShiftCollaborator[]
+  shiftManualIncomes ShiftManualIncome[]
 
   @@index([tenantId])
   @@map("shifts")
+}
+
+// Ingresos al turno sin pedido (ej. envío cobrado con MP del local) — cuadran con egresos por método.
+model ShiftManualIncome {
+  id            String   @id @default(cuid())
+  tenantId      String
+  shiftId       String
+  userId        String?
+  amount        Decimal  @db.Decimal(10, 2)
+  paymentMethod String
+  description   String
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shift  Shift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([shiftId])
+  @@map("shift_manual_incomes")
 }
 
 // ─── SHIFT COLLABORATOR (Colaboradores del Turno) ────────────────────────────
@@ -207,6 +231,8 @@ model Expense {
   category    String? // "Alquiler", "Sueldo", "Limpieza", etc.
   description String
   amount      Decimal     @db.Decimal(10, 2)
+  /** Egresos de caja: EFECTIVO = sale del cajón; otros = no afectan efectivo esperado */
+  paymentMethod String?
   currency    String      @default("ARS")
 
   // Para gastos estructurales

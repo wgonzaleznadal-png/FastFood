@@ -346,9 +346,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </Text>
                       </Paper>
                       <Paper p="md" radius="md" style={{ background: "rgba(59, 130, 246, 0.05)", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
-                        <Text size="xs" c="dimmed" mb={4}>EN CAJA</Text>
+                        <Text size="xs" c="dimmed" mb={4}>EN CAJA (EFECTIVO)</Text>
                         <Text fw={700} size="lg" c="blue">
-                          ${shiftSummary ? (Number(activeShift.initialCash) + Number(shiftSummary.totalSales || 0) - Number(shiftSummary.totalExpenses || 0)).toFixed(0) : "0"}
+                          ${shiftSummary
+                            ? (
+                                Number(activeShift.initialCash) +
+                                Number(shiftSummary.cashSalesLocal || 0) +
+                                Number(shiftSummary.manualCashIncomeTotal || 0) -
+                                Number(
+                                  shiftSummary.cashDrawerExpenses != null
+                                    ? shiftSummary.cashDrawerExpenses
+                                    : shiftSummary.totalExpenses || 0,
+                                ) +
+                                Number(
+                                  shiftSummary.shift?.deliverySettlementAmount ||
+                                    activeShift.deliverySettlementAmount ||
+                                    0,
+                                )
+                              ).toFixed(0)
+                            : "0"}
                         </Text>
                       </Paper>
                     </Group>

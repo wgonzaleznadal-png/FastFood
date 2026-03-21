@@ -6,6 +6,7 @@ import {
   openShiftSchema, closeShiftSchema, cashExpenseSchema,
   addCollaboratorSchema, createCadeteSchema, assignCadeteSchema, renderOrderSchema, closeDeliverySchema,
   addInitialCashSchema,
+  manualShiftIncomeSchema,
 } from "./shifts.schema";
 import {
   openShift,
@@ -30,6 +31,7 @@ import {
   updateOrderCoords,
   closeDeliverySettlement,
   addInitialCashToShift,
+  createManualShiftIncome,
 } from "./shifts.service";
 
 const router = Router();
@@ -91,6 +93,15 @@ router.post("/expenses", async (req: Request, res: Response, next: NextFunction)
     const input = cashExpenseSchema.parse(req.body);
     const expense = await createCashExpense(req.auth!.tenantId, req.auth!.userId, input);
     res.status(201).json(expense);
+  } catch (err) { next(err); }
+});
+
+// POST /api/shifts/manual-income — ingreso al turno sin pedido (ej. MP del cadete); PIN si hay adminPin
+router.post("/manual-income", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const input = manualShiftIncomeSchema.parse(req.body);
+    const row = await createManualShiftIncome(req.auth!.tenantId, req.auth!.userId, input);
+    res.status(201).json(row);
   } catch (err) { next(err); }
 });
 
@@ -183,7 +194,15 @@ router.get("/:id/summary", async (req: Request, res: Response, next: NextFunctio
     res.json(summary);
   } catch (err) {
     console.error("[shifts/:id/summary]", err);
-    res.json({ shift: null, totalSales: 0, totalExpenses: 0, paymentMethods: [] });
+    res.json({
+      shift: null,
+      totalSales: 0,
+      totalExpenses: 0,
+      cashDrawerExpenses: 0,
+      manualCashIncomeTotal: 0,
+      manualIncomes: [],
+      paymentMethods: [],
+    });
   }
 });
 

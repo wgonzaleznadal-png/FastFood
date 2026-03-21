@@ -7,13 +7,13 @@ import { useShiftStore } from "@/store/shiftStore";
 import { usePermissionsStore } from "@/store/permissionsStore";
 import {
   Text, Button, Group, Stack, NumberInput, Textarea, TextInput, Paper,
-  Badge, Alert, Loader, Center,
+  Badge, Alert, Loader, Center, Select,
 } from "@mantine/core";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
-  IconCash, IconLock, IconAlertTriangle, IconCircleCheck, IconPlus,
+  IconCash, IconLock, IconAlertTriangle, IconCircleCheck, IconPlus, IconBuildingBank,
 } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
@@ -21,7 +21,9 @@ import { fmt, moneyNumberInputProps, parseMoneyInput } from "@/lib/format";
 import KgOrdersModule from "@/components/caja/KgOrdersModule";
 import OpenShiftForm from "@/components/caja/OpenShiftForm";
 import AddInitialCashDrawer from "@/components/caja/AddInitialCashDrawer";
+import ManualShiftIncomeDrawer from "@/components/caja/ManualShiftIncomeDrawer";
 import DeliverySettlementModal from "@/components/caja/DeliverySettlementModal";
+import { SHIFT_LEDGER_PAYMENT_OPTIONS, ledgerMethodShortLabel } from "@/lib/shiftLedgerPaymentMethods";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
 import { useShiftHydrated } from "@/hooks/useShiftHydrated";
@@ -37,9 +39,10 @@ type CloseForm = z.infer<typeof closeSchema>;
 
 interface CashExpense {
   id: string;
-  amount: string;
+  amount: number | string;
   description: string;
   notes?: string | null;
+  paymentMethod?: string;
   createdAt: string;
 }
 
@@ -54,9 +57,11 @@ export default function CajaPage() {
   const [egresoDrawerOpen, setEgresoDrawerOpen] = useState(false);
   const [deliverySettlementOpen, setDeliverySettlementOpen] = useState(false);
   const [addCambioDrawerOpen, setAddCambioDrawerOpen] = useState(false);
+  const [manualIncomeOpen, setManualIncomeOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [expenses, setExpenses] = useState<CashExpense[]>([]);
-  const [egresoAmount, setEgresoAmount] = useState<number | string>("");
+  const [egresoAmount, setEgresoAmount] = useState(0);
+  const [egresoPaymentMethod, setEgresoPaymentMethod] = useState("EFECTIVO");
   const [egresoDescription, setEgresoDescription] = useState("");
   const [egresoNotes, setEgresoNotes] = useState("");
   const [savingEgreso, setSavingEgreso] = useState(false);
@@ -117,7 +122,7 @@ export default function CajaPage() {
   };
 
   const handleCreateExpense = async () => {
-    if (!activeShift || !egresoAmount || !egresoDescription.trim()) {
+    if (!activeShift || !egresoAmount || egresoAmount <= 0 || !egresoDescription.trim()) {
       notifications.show({ title: "Campos requeridos", message: "Monto y concepto son obligatorios", color: "orange" });
       return;
     }
@@ -125,13 +130,15 @@ export default function CajaPage() {
     try {
       await api.post("/shifts/expenses", {
         shiftId: activeShift.id,
-        amount: Number(egresoAmount),
+        amount: egresoAmount,
+        paymentMethod: egresoPaymentMethod,
         description: egresoDescription.trim(),
         notes: egresoNotes.trim() || undefined,
       });
-      notifications.show({ title: "Egreso registrado", message: fmt(Number(egresoAmount)), color: "green" });
+      notifications.show({ title: "Egreso registrado", message: fmt(egresoAmount), color: "green" });
       setEgresoDrawerOpen(false);
-      setEgresoAmount("");
+      setEgresoAmount(0);
+      setEgresoPaymentMethod("EFECTIVO");
       setEgresoDescription("");
       setEgresoNotes("");
       fetchExpenses();
@@ -173,6 +180,14 @@ export default function CajaPage() {
                 onClick={() => setDeliverySettlementOpen(true)}
               >
                 Cerrar Delivery
+              </Button>
+              <Button
+                variant="light"
+                color="green"
+                leftSection={<IconBuildingBank size={16} />}
+                onClick={() => setManualIncomeOpen(true)}
+              >
+                Ingreso manual
               </Button>
               <Button
                 variant="light"
@@ -290,8 +305,15 @@ export default function CajaPage() {
             placeholder="0,00"
             min={0.01}
             value={egresoAmount}
-            onChange={setEgresoAmount}
+            onChange={(v) => setEgresoAmount(parseMoneyInput(v))}
             {...moneyNumberInputProps}
+          />
+          <Select
+            label="Pagado con"
+            description="Solo «Efectivo» descuenta el billetes en caja. MP/tarjeta/transferencia ajustan el resumen por método."
+            data={[...SHIFT_LEDGER_PAYMENT_OPTIONS]}
+            value={egresoPaymentMethod}
+            onChange={(v) => setEgresoPaymentMethod(v || "EFECTIVO")}
           />
           <TextInput
             label="Concepto"
@@ -324,7 +346,12 @@ export default function CajaPage() {
                 {expenses.map((exp) => (
                   <Group key={exp.id} justify="space-between" p="xs" style={{ border: "1px solid var(--gd-border)", borderRadius: "var(--gd-radius-sm)" }}>
                     <Stack gap={2} style={{ flex: 1 }}>
-                      <Text size="sm" fw={600}>{exp.description}</Text>
+                      <Group gap="xs">
+                        <Text size="sm" fw={600}>{exp.description}</Text>
+                        {exp.paymentMethod && (
+                          <Badge size="xs" variant="light" color="gray">{ledgerMethodShortLabel(exp.paymentMethod)}</Badge>
+                        )}
+                      </Group>
                       {exp.notes && <Text size="xs" c="dimmed">{exp.notes}</Text>}
                     </Stack>
                     <Group gap="xs">
@@ -357,6 +384,15 @@ export default function CajaPage() {
           onClose={() => setAddCambioDrawerOpen(false)}
           shiftId={activeShift.id}
           currentInitialCash={Number(activeShift.initialCash)}
+        />
+      )}
+
+      {activeShift && (
+        <ManualShiftIncomeDrawer
+          opened={manualIncomeOpen}
+          onClose={() => setManualIncomeOpen(false)}
+          shiftId={activeShift.id}
+          onSuccess={() => fetchExpenses()}
         />
       )}
 
