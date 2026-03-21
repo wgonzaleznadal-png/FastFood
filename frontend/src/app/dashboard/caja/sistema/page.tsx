@@ -15,6 +15,7 @@ import {
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
 import { fmt, moneyNumberInputProps } from "@/lib/format";
+import AddInitialCashDrawer from "@/components/caja/AddInitialCashDrawer";
 import { ThermalPrinter } from "@/lib/thermalPrinter";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
@@ -106,6 +107,7 @@ export default function SistemaCajaPage() {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [closeDrawerOpen, setCloseDrawerOpen] = useState(false);
+  const [addCambioDrawerOpen, setAddCambioDrawerOpen] = useState(false);
   const [egresoDrawerOpen, setEgresoDrawerOpen] = useState(false);
   const [closing, setClosing] = useState(false);
 
@@ -349,6 +351,9 @@ export default function SistemaCajaPage() {
           <Group gap="sm">
             <Button color="orange" leftSection={<IconTrendingDown size={16} />} onClick={() => setEgresoDrawerOpen(true)}>
               Nuevo Egreso
+            </Button>
+            <Button variant="light" color="teal" leftSection={<IconCash size={16} />} onClick={() => setAddCambioDrawerOpen(true)}>
+              Agregar cambio
             </Button>
             <Button color="red" leftSection={<IconX size={16} />} onClick={() => { fetchSummary(); setCloseDrawerOpen(true); }}>
               Cerrar Caja
@@ -634,9 +639,14 @@ export default function SistemaCajaPage() {
             <Paper p="md" radius="md" withBorder>
               <Text size="sm" fw={700} mb="sm">Efectivo Esperado en Caja</Text>
               <Stack gap={4}>
-                <Group justify="space-between">
+                <Group justify="space-between" wrap="nowrap" align="center">
                   <Text size="sm" c="dimmed">Caja Inicial</Text>
-                  <Text size="sm" fw={600}>{fmt(Number(activeShift.initialCash))}</Text>
+                  <Group gap="xs" wrap="nowrap">
+                    <Text size="sm" fw={600}>{fmt(Number(activeShift.initialCash))}</Text>
+                    <Button size="compact-xs" variant="light" color="teal" onClick={() => setAddCambioDrawerOpen(true)}>
+                      + Cambio
+                    </Button>
+                  </Group>
                 </Group>
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">+ Efectivo Local (retiro)</Text>
@@ -805,6 +815,16 @@ export default function SistemaCajaPage() {
           )}
         </Stack>
       </Drawer>
+
+      {activeShift && (
+        <AddInitialCashDrawer
+          opened={addCambioDrawerOpen}
+          onClose={() => setAddCambioDrawerOpen(false)}
+          shiftId={activeShift.id}
+          currentInitialCash={Number(activeShift.initialCash)}
+          onSuccess={() => fetchSummary()}
+        />
+      )}
     </div>
   );
 }

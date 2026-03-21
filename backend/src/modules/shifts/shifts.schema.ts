@@ -44,6 +44,12 @@ export const closeDeliverySchema = z.object({
   { message: "Seleccioná el encargado de delivery o ingresá el nombre", path: ["deliveryPersonUserId"] }
 );
 
+/** Sumar efectivo al cambio ya registrado en la apertura (turno abierto). */
+export const addInitialCashSchema = z.object({
+  amount: z.number().positive("El monto debe ser mayor a 0"),
+  note: z.string().max(500).optional(),
+});
+
 export type OpenShiftInput = z.infer<typeof openShiftSchema>;
 export type CloseShiftInput = z.infer<typeof closeShiftSchema>;
 export type CashExpenseInput = z.infer<typeof cashExpenseSchema>;
@@ -52,3 +58,4 @@ export type CreateCadeteInput = z.infer<typeof createCadeteSchema>;
 export type AssignCadeteInput = z.infer<typeof assignCadeteSchema>;
 export type RenderOrderInput = z.infer<typeof renderOrderSchema>;
 export type CloseDeliveryInput = z.infer<typeof closeDeliverySchema>;
+export type AddInitialCashInput = z.infer<typeof addInitialCashSchema>;

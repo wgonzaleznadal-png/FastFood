@@ -9,7 +9,7 @@ import { IconCash } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
 import { useShiftStore } from "@/store/shiftStore";
-import { moneyNumberInputProps } from "@/lib/format";
+import { moneyNumberInputProps, parseMoneyInput } from "@/lib/format";
 import { mapShiftFromApi } from "@/lib/shiftFromApi";
 
 const openShiftSchema = z.object({
@@ -60,7 +60,7 @@ export default function OpenShiftForm({ onSuccess, showCancel, onCancel }: OpenS
           placeholder="0,00"
           min={0}
           error={form.formState.errors.initialCash?.message}
-          onChange={(val) => form.setValue("initialCash", typeof val === "string" ? parseFloat(val) || 0 : val)}
+          onChange={(val) => form.setValue("initialCash", parseMoneyInput(val))}
           {...moneyNumberInputProps}
         />
         <Textarea

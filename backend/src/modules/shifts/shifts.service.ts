@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { createError } from "@/middleware/errorHandler";
 import { logAudit } from "@/lib/auditLog";
-import { OpenShiftInput, CloseShiftInput, CashExpenseInput, AddCollaboratorInput, CreateCadeteInput, CloseDeliveryInput } from "./shifts.schema";
+import { OpenShiftInput, CloseShiftInput, CashExpenseInput, AddCollaboratorInput, CreateCadeteInput, CloseDeliveryInput, AddInitialCashInput } from "./shifts.schema";
 import { notifyOrderStatusChange } from "../whatsapp/whatsapp.notifications";
 
 export async function openShift(tenantId: string, userId: string, input: OpenShiftInput) {
@@ -20,6 +20,49 @@ export async function openShift(tenantId: string, userId: string, input: OpenShi
     },
     include: { openedBy: { select: { id: true, name: true, role: true } } },
   });
+}
+
+/** Suma efectivo a `initialCash` del turno abierto (más cambio en caja tras la apertura). */
+export async function addInitialCashToShift(
+  tenantId: string,
+  userId: string,
+  shiftId: string,
+  input: AddInitialCashInput
+) {
+  const shift = await prisma.shift.findFirst({
+    where: { id: shiftId, tenantId, status: "OPEN" },
+  });
+  if (!shift) throw createError("Turno no encontrado o cerrado", 404);
+
+  const noteLine = input.note?.trim();
+  const newNotes =
+    noteLine != null && noteLine.length > 0
+      ? [shift.notes?.trim() || "", `+Cambio en caja: ${input.amount} — ${noteLine}`].filter(Boolean).join("\n")
+      : undefined;
+
+  const updated = await prisma.shift.update({
+    where: { id: shiftId },
+    data: {
+      initialCash: { increment: input.amount },
+      ...(newNotes !== undefined ? { notes: newNotes } : {}),
+    },
+    include: {
+      openedBy: { select: { id: true, name: true, role: true } },
+      collaborators: { include: { user: { select: { id: true, name: true, role: true } } } },
+      _count: { select: { orders: true } },
+    },
+  });
+
+  void logAudit({
+    tenantId,
+    userId,
+    action: "SHIFT_ADD_INITIAL_CASH",
+    entity: "shift",
+    entityId: shiftId,
+    metadata: { amount: input.amount, note: noteLine ?? null },
+  });
+
+  return serializeShiftForJson(updated as Record<string, unknown>);
 }
 
 // backend/src/modules/shifts/shifts.service.ts

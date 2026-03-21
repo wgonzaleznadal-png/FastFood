@@ -546,21 +546,29 @@ export const ordersService = {
       include: { items: { include: { product: true } } }
     });
 
+    const kitchenKiloDisplayName = (rawName: string): string => {
+      const n = rawName
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '');
+      if (n.includes('paella')) return 'Paella';
+      const hasArroz = n.includes('arroz');
+      const hasPollo = n.includes('pollo');
+      if (hasArroz && hasPollo) return 'Arroz con Pollo';
+      return rawName.trim();
+    };
+
     const kilosMap: Record<string, { name: string; totalKg: number }> = {};
     orders.forEach(order => {
       order.items.forEach(item => {
         if (item.product && item.unitType === 'KG') {
-          let name = item.product.name;
-          if (name.toLowerCase().includes('paella')) {
-            name = 'Paella';
-          }
+          const name = kitchenKiloDisplayName(item.product.name);
           if (!kilosMap[name]) {
             kilosMap[name] = { name, totalKg: 0 };
           }
-          
-          // CORRECCIÓN: En la DB cruda, el peso está en 'quantity'
-          // No existe 'weightKg' en el modelo de Prisma
-          const weight = Number(item.quantity || 0); 
+
+          const weight = Number(item.quantity || 0);
           kilosMap[name].totalKg += weight;
         }
       });

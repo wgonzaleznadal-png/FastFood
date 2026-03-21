@@ -5,6 +5,7 @@ import { requireModule } from "@/middleware/moduleGuard";
 import {
   openShiftSchema, closeShiftSchema, cashExpenseSchema,
   addCollaboratorSchema, createCadeteSchema, assignCadeteSchema, renderOrderSchema, closeDeliverySchema,
+  addInitialCashSchema,
 } from "./shifts.schema";
 import {
   openShift,
@@ -28,6 +29,7 @@ import {
   getDeliveryOrders,
   updateOrderCoords,
   closeDeliverySettlement,
+  addInitialCashToShift,
 } from "./shifts.service";
 
 const router = Router();
@@ -264,6 +266,20 @@ router.post("/:id/close-delivery", async (req: Request, res: Response, next: Nex
   try {
     const input = closeDeliverySchema.parse(req.body);
     res.json(await closeDeliverySettlement(req.auth!.tenantId, String(req.params.id), input));
+  } catch (err) { next(err); }
+});
+
+// POST /api/shifts/:id/add-initial-cash — más cambio sobre la caja inicial del turno
+router.post("/:id/add-initial-cash", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const input = addInitialCashSchema.parse(req.body);
+    const shift = await addInitialCashToShift(
+      req.auth!.tenantId,
+      req.auth!.userId,
+      String(req.params.id),
+      input
+    );
+    res.json(shift);
   } catch (err) { next(err); }
 });
 

@@ -17,9 +17,10 @@ import {
 } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
-import { fmt, moneyNumberInputProps } from "@/lib/format";
+import { fmt, moneyNumberInputProps, parseMoneyInput } from "@/lib/format";
 import KgOrdersModule from "@/components/caja/KgOrdersModule";
 import OpenShiftForm from "@/components/caja/OpenShiftForm";
+import AddInitialCashDrawer from "@/components/caja/AddInitialCashDrawer";
 import DeliverySettlementModal from "@/components/caja/DeliverySettlementModal";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
@@ -52,6 +53,7 @@ export default function CajaPage() {
   const [closeDrawerOpen, setCloseDrawerOpen] = useState(false);
   const [egresoDrawerOpen, setEgresoDrawerOpen] = useState(false);
   const [deliverySettlementOpen, setDeliverySettlementOpen] = useState(false);
+  const [addCambioDrawerOpen, setAddCambioDrawerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [expenses, setExpenses] = useState<CashExpense[]>([]);
   const [egresoAmount, setEgresoAmount] = useState<number | string>("");
@@ -173,6 +175,14 @@ export default function CajaPage() {
                 Cerrar Delivery
               </Button>
               <Button
+                variant="light"
+                color="teal"
+                leftSection={<IconCash size={16} />}
+                onClick={() => setAddCambioDrawerOpen(true)}
+              >
+                Agregar cambio
+              </Button>
+              <Button
                 color="orange"
                 leftSection={<IconPlus size={16} />}
                 onClick={() => setEgresoDrawerOpen(true)}
@@ -209,11 +219,16 @@ export default function CajaPage() {
               <Text size="sm" c="dimmed">Cajero</Text>
               <Text fw={600}>{activeShift.openedBy?.name ?? user?.name}</Text>
             </Group>
-            <Group justify="space-between">
+            <Group justify="space-between" wrap="nowrap" align="center">
               <Text size="sm" c="dimmed">Caja inicial</Text>
-              <Text fw={700} c="orange">
-                {fmt(Number(activeShift.initialCash))}
-              </Text>
+              <Group gap="xs" wrap="nowrap">
+                <Text fw={700} c="orange">
+                  {fmt(Number(activeShift.initialCash))}
+                </Text>
+                <Button size="compact-xs" variant="light" color="teal" onClick={() => { setCloseDrawerOpen(false); setAddCambioDrawerOpen(true); }}>
+                  + Cambio
+                </Button>
+              </Group>
             </Group>
             <Group justify="space-between">
               <Text size="sm" c="dimmed">Apertura</Text>
@@ -237,7 +252,7 @@ export default function CajaPage() {
                   placeholder="0,00"
                   min={0}
                   error={closeForm.formState.errors.finalCash?.message}
-                  onChange={(val) => closeForm.setValue("finalCash", typeof val === "string" ? parseFloat(val) || 0 : val)}
+                  onChange={(val) => closeForm.setValue("finalCash", parseMoneyInput(val))}
                   {...moneyNumberInputProps}
                 />
                 <Textarea
@@ -335,6 +350,15 @@ export default function CajaPage() {
           )}
         </Stack>
       </Drawer>
+
+      {activeShift && (
+        <AddInitialCashDrawer
+          opened={addCambioDrawerOpen}
+          onClose={() => setAddCambioDrawerOpen(false)}
+          shiftId={activeShift.id}
+          currentInitialCash={Number(activeShift.initialCash)}
+        />
+      )}
 
       {activeShift && (
         <DeliverySettlementModal
