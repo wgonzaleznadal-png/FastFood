@@ -38,3 +38,4 @@ Si en **Settings → Deploy → Custom Start Command** pusiste solo `npm start` 
 ## Variables
 
 - `DATABASE_URL` debe apuntar al Postgres de Railway (con SSL si corresponde).
+- `RUN_DB_SEED=true` — solo si querés ejecutar `prisma db seed` en ese deploy (primera instalación). Por defecto el contenedor **no** corre seed en cada arranque.

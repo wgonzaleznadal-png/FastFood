@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissionsStore } from "@/store/permissionsStore";
@@ -73,6 +73,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; role: string }>>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [addingCollab, setAddingCollab] = useState(false);
+  const sessionRenewedRef = useRef(false);
 
   const handleLogout = async () => {
     try {
@@ -101,10 +102,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!_hasHydrated) return;
     if (!isAuthenticated) {
       router.replace("/login");
-      return;
     }
-    fetchPermissions();
-  }, [_hasHydrated, isAuthenticated, router, fetchPermissions]);
+  }, [_hasHydrated, isAuthenticated, router]);
+
+  // Tras F5: renovar cookies y recién ahí pedir permisos (evita 401 por token corto vencido).
+  useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated) return;
+    if (sessionRenewedRef.current) return;
+    sessionRenewedRef.current = true;
+    void (async () => {
+      try {
+        const res = await api.post("/auth/refresh");
+        if (res.data?.user && res.data?.tenant) {
+          useAuthStore.getState().setAuth(res.data.user, res.data.tenant);
+        }
+      } catch {
+        clearAuth();
+        clearPermissions();
+        router.replace("/login");
+        return;
+      }
+      await fetchPermissions();
+    })();
+  }, [_hasHydrated, isAuthenticated, router, clearAuth, clearPermissions, fetchPermissions]);
 
   useEffect(() => {
     if (activeShift && turnoPopoverOpen) {

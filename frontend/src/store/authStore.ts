@@ -50,8 +50,17 @@ export const useAuthStore = create<AuthState>()(
     {
       name: "gastrodash-auth",
       storage: createJSONStorage(() => safeStorage),
-      partialize: (s) => ({ user: s.user, tenant: s.tenant }),
+      // Persistir isAuthenticated: sin esto, tras F5 queda false y el layout manda a /login
+      // aunque user/tenant sí se cargan desde localStorage.
+      partialize: (s) => ({
+        user: s.user,
+        tenant: s.tenant,
+        isAuthenticated: s.isAuthenticated,
+      }),
       onRehydrateStorage: () => (state) => {
+        if (state?.user && state?.tenant && !state.isAuthenticated) {
+          state.isAuthenticated = true;
+        }
         state?.setHasHydrated(true);
       },
     }

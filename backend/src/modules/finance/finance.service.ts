@@ -99,9 +99,10 @@ export async function getConsolidator(
 
   const shiftIds = shifts.map((s) => s.id);
 
-  // 3. LA EXTRACCIÓN MASIVA: Traemos todo el detalle de ventas
-  // NOTA: Incluimos "DELIVERED" para arreglar el bug de los cadetes
-  const kgOrders = await prisma.order.findMany({
+  // 3. Ventas del periodo: UNA sola fuente — pedidos cobrados (isPaid).
+  // Antes se sumaban también órdenes con status DELIVERED, que solapaban con las ya pagadas
+  // (delivery quedaba en delivery + otra vez en "retiro"/efectivo) y duplicaba totales (~98,5k + 48k).
+  const orders = await prisma.order.findMany({
     where: { shiftId: { in: shiftIds }, isPaid: true },
     select: {
       shiftId: true,
@@ -109,45 +110,35 @@ export async function getConsolidator(
       paymentMethod: true,
       isDelivery: true,
       createdAt: true,
-      items: { select: { quantity: true, unitType: true, product: { select: { name: true } } } }
-    }
+      items: { select: { quantity: true, unitType: true, product: { select: { name: true } } } },
+    },
   });
 
-  // Por si tenés órdenes del menú viejo (bebidas, empanadas unitarias, etc.)
-  const regularOrders = await prisma.order.findMany({
-    where: { shiftId: { in: shiftIds }, status: "DELIVERED" },
-    select: { shiftId: true, totalPrice: true, createdAt: true }
-  });
-
-  // 4. EL DULCE DE LECHE: Variables para los gráficos y KPIs
+  // 4. Agregados para gráficos y KPIs (sin duplicar líneas)
   let totalSales = 0;
   let totalVolumeKg = 0;
-  let totalOrdersCount = kgOrders.length + regularOrders.length;
-  
+  const totalOrdersCount = orders.length;
+
   const salesByMethod: Record<string, number> = {};
   const salesByDay: Record<string, number> = {};
   const typeSplit = { delivery: 0, retiro: 0 };
   const shiftSalesMap = new Map<string, number>();
   const volumeByProduct: Record<string, number> = {};
 
-  // Procesamos los pedidos por kilo
-  for (const o of kgOrders) {
+  for (const o of orders) {
     const price = Number(o.totalPrice || 0);
     totalSales += price;
 
-    // Sumar al turno correspondiente (para la tabla inferior)
     shiftSalesMap.set(o.shiftId, (shiftSalesMap.get(o.shiftId) || 0) + price);
 
-    // Sumar por método de pago
     const method = o.paymentMethod ? o.paymentMethod.toUpperCase() : "EFECTIVO";
     salesByMethod[method] = (salesByMethod[method] || 0) + price;
 
-    // Delivery vs Retiro
     if (o.isDelivery) typeSplit.delivery += price;
     else typeSplit.retiro += price;
 
     for (const item of o.items) {
-      if (item.unitType === 'KG') {
+      if (item.unitType === "KG") {
         const qty = Number(item.quantity || 0);
         totalVolumeKg += qty;
         const name = item.product?.name || "Sin producto";
@@ -155,27 +146,9 @@ export async function getConsolidator(
       }
     }
 
-    // Ingresos Diarios (Agrupación para gráfico de barras)
-    // Restamos 3 horas para la zona horaria de Argentina (Corrientes)
     const d = new Date(o.createdAt);
     d.setHours(d.getHours() - 3);
-    const day = d.toISOString().split('T')[0]; // Genera "2026-02-25"
-    salesByDay[day] = (salesByDay[day] || 0) + price;
-  }
-
-  // Procesamos órdenes regulares (para no perder compatibilidad)
-  for (const ro of regularOrders) {
-    const price = Number(ro.totalPrice || 0);
-    totalSales += price;
-    shiftSalesMap.set(ro.shiftId, (shiftSalesMap.get(ro.shiftId) || 0) + price);
-    
-    // Por defecto las mandamos a efectivo y retiro si no tienen el campo
-    salesByMethod["EFECTIVO"] = (salesByMethod["EFECTIVO"] || 0) + price;
-    typeSplit.retiro += price;
-
-    const d = new Date(ro.createdAt);
-    d.setHours(d.getHours() - 3);
-    const day = d.toISOString().split('T')[0];
+    const day = d.toISOString().split("T")[0];
     salesByDay[day] = (salesByDay[day] || 0) + price;
   }
 

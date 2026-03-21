@@ -30,11 +30,16 @@ if [ "$migrate_exit" -ne 0 ]; then
 fi
 echo "[start] Migrations applied."
 
-echo "[start] Running prisma db seed..."
-npx prisma db seed || {
-  echo "[start] WARNING: Seed failed, continuing anyway..."
-}
-echo "[start] Seed completed."
+# No correr seed en cada redeploy (duplica ruido y puede confundir). Primera vez: RUN_DB_SEED=true en Railway.
+if [ "${RUN_DB_SEED:-}" = "true" ]; then
+  echo "[start] RUN_DB_SEED=true — running prisma db seed..."
+  npx prisma db seed || {
+    echo "[start] WARNING: Seed failed, continuing anyway..."
+  }
+  echo "[start] Seed completed."
+else
+  echo "[start] Skipping prisma db seed (set RUN_DB_SEED=true to run once)."
+fi
 
 echo "[start] Starting server..."
 exec node dist/server.js
