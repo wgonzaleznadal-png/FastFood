@@ -23,6 +23,8 @@ import OpenShiftForm from "@/components/caja/OpenShiftForm";
 import DeliverySettlementModal from "@/components/caja/DeliverySettlementModal";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
+import { useShiftHydrated } from "@/hooks/useShiftHydrated";
+import { mapShiftFromApi } from "@/lib/shiftFromApi";
 import styles from "./caja.module.css";
 
 const closeSchema = z.object({
@@ -44,6 +46,7 @@ export default function CajaPage() {
   const searchParams = useSearchParams();
   const { user } = useAuthStore();
   const { activeShift, setActiveShift, clearShift } = useShiftStore();
+  const shiftHydrated = useShiftHydrated();
   const { can } = usePermissionsStore();
   const [loading, setLoading] = useState(true);
   const [closeDrawerOpen, setCloseDrawerOpen] = useState(false);
@@ -69,7 +72,7 @@ export default function CajaPage() {
     const fetchActiveShift = async () => {
       try {
         const res = await api.get("/shifts/me");
-        setActiveShift(res.data);
+        setActiveShift(mapShiftFromApi(res.data));
       } catch (err: unknown) {
         const status = (err as { response?: { status?: number } })?.response?.status;
         // 429/5xx/red: no borrar turno persistido (evita “se cerró todo” al refrescar)
@@ -147,7 +150,7 @@ export default function CajaPage() {
     }
   };
 
-  if (loading) {
+  if (!shiftHydrated || loading) {
     return (
       <Center h={300}>
         <Loader color="orange" />
@@ -339,11 +342,17 @@ export default function CajaPage() {
           onClose={() => setDeliverySettlementOpen(false)}
           shiftId={activeShift.id}
           collaborators={activeShift.collaborators}
-          onSuccess={() => {
+          onSuccess={async () => {
+            try {
+              const res = await api.get("/shifts/me");
+              setActiveShift(mapShiftFromApi(res.data));
+            } catch {
+              /* mantiene datos persistidos */
+            }
             notifications.show({
               title: "Rendición completada",
               message: "El efectivo de delivery fue registrado",
-              color: "green"
+              color: "green",
             });
           }}
         />

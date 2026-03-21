@@ -136,11 +136,13 @@ model Shift {
   status       ShiftStatus @default(OPEN)
   notes        String?
   
-  // Rendición de Delivery
-  deliverySettlementAmount   Decimal?  @db.Decimal(10, 2)
-  deliverySettlementBy       String?
-  deliverySettlementUserId   String?
-  deliverySettlementAt       DateTime?
+  // Rendición delivery: Amount = entregado al cajero; Expected = neto a rendir (efectivo cobrado en delivery − egresos de caja del encargado userId); Difference = entregado − esperado (negativo = falta)
+  deliverySettlementAmount         Decimal?  @db.Decimal(10, 2)
+  deliverySettlementExpectedCash   Decimal?  @db.Decimal(10, 2)
+  deliverySettlementDifference     Decimal?  @db.Decimal(10, 2)
+  deliverySettlementBy             String?
+  deliverySettlementUserId         String?
+  deliverySettlementAt             DateTime?
   
   // Conteo de billetes al cierre (JSON: { "20000": 2, "1000": 5, ... })
   billCounts                 Json?

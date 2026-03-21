@@ -106,6 +106,8 @@ function serializeShiftForJson(shift: Record<string, unknown>) {
     expectedCash: num(shift.expectedCash),
     difference: num(shift.difference),
     deliverySettlementAmount: num(shift.deliverySettlementAmount),
+    deliverySettlementExpectedCash: num(shift.deliverySettlementExpectedCash),
+    deliverySettlementDifference: num(shift.deliverySettlementDifference),
   };
 }
 
@@ -273,6 +275,10 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
       status: shift.status,
       notes: shift.notes,
       deliverySettlementAmount: shift.deliverySettlementAmount != null ? String(shift.deliverySettlementAmount) : null,
+      deliverySettlementExpectedCash:
+        shift.deliverySettlementExpectedCash != null ? String(shift.deliverySettlementExpectedCash) : null,
+      deliverySettlementDifference:
+        shift.deliverySettlementDifference != null ? String(shift.deliverySettlementDifference) : null,
       deliverySettlementBy: shift.deliverySettlementBy,
       deliverySettlementAt: shift.deliverySettlementAt,
       billCounts: shift.billCounts,
@@ -333,6 +339,22 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
     },
     cashSalesLocal,
     cashSalesDelivery,
+    /** Egresos de caja cargados por el usuario que cerró delivery (si hay rendición con userId) */
+    deliveryCadeteEgresos: shift.deliverySettlementUserId
+      ? Number(
+          (
+            await prisma.expense.aggregate({
+              where: {
+                tenantId,
+                shiftId,
+                type: "CASH",
+                userId: shift.deliverySettlementUserId,
+              },
+              _sum: { amount: true },
+            })
+          )._sum.amount ?? 0,
+        )
+      : 0,
   };
 }
 
@@ -646,12 +668,32 @@ export async function closeDeliverySettlement(tenantId: string, shiftId: string,
   const mpOrders = allPaidDelivery.filter((o) => o.paymentMethod === "MERCADO PAGO" || o.paymentMethod === "MERCADOPAGO");
   const otherOrders = allPaidDelivery.filter((o) => o.paymentMethod !== "EFECTIVO" && o.paymentMethod !== "MERCADO PAGO" && o.paymentMethod !== "MERCADOPAGO");
 
-  const totalDeliveryCash = cashOrders.reduce((sum, order) => sum + Number(order.totalPrice), 0);
+  const grossDeliveryCash = cashOrders.reduce((sum, order) => sum + Number(order.totalPrice), 0);
+
+  // Egresos de caja chica cargados por el encargado (mismo usuario): salen del efectivo que tenía en mano del delivery
+  let deliveryPersonExpensesTotal = 0;
+  if (input.deliveryPersonUserId) {
+    const agg = await prisma.expense.aggregate({
+      where: {
+        tenantId,
+        shiftId,
+        type: "CASH",
+        userId: input.deliveryPersonUserId,
+      },
+      _sum: { amount: true },
+    });
+    deliveryPersonExpensesTotal = Number(agg._sum.amount ?? 0);
+  }
+
+  const netExpectedDelivery = grossDeliveryCash - deliveryPersonExpensesTotal;
+  const diff = input.receivedAmount - netExpectedDelivery;
 
   const updatedShift = await prisma.shift.update({
     where: { id: shiftId },
     data: {
       deliverySettlementAmount: input.receivedAmount,
+      deliverySettlementExpectedCash: netExpectedDelivery,
+      deliverySettlementDifference: diff,
       deliverySettlementBy: deliveryPersonName,
       deliverySettlementUserId: input.deliveryPersonUserId ?? null,
       deliverySettlementAt: new Date(),
@@ -665,9 +707,14 @@ export async function closeDeliverySettlement(tenantId: string, shiftId: string,
     cashOrdersCount: cashOrders.length,
     mpOrdersCount: mpOrders.length,
     otherOrdersCount: otherOrders.length,
-    totalDeliveryCash,
+    /** Efectivo cobrado en delivery (bruto, según pedidos) */
+    totalDeliveryCash: grossDeliveryCash,
+    /** Suma de egresos de caja registrados por el encargado (userId) */
+    deliveryPersonExpensesTotal,
+    /** Bruto - egresos del encargado: lo que debería entregar al cajero */
+    netExpectedDeliveryCash: netExpectedDelivery,
     receivedAmount: input.receivedAmount,
-    difference: input.receivedAmount - totalDeliveryCash,
+    difference: diff,
     deliveryPersonName,
   };
 }

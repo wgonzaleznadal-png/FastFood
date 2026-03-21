@@ -43,6 +43,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useShiftStore } from "@/store/shiftStore";
+import { mapShiftFromApi } from "@/lib/shiftFromApi";
 import OpenShiftForm from "@/components/caja/OpenShiftForm";
 import Link from "next/link";
 import styles from "./layout.module.css";
@@ -134,7 +135,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     try {
       await api.post(`/shifts/${activeShift.id}/collaborators`, { userId: selectedUserId });
       const res = await api.get("/shifts/me");
-      setActiveShift(res.data);
+      setActiveShift(mapShiftFromApi(res.data));
       setSelectedUserId(null);
     } catch (err) {
       console.error("Error adding collaborator:", err);
@@ -148,7 +149,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     try {
       await api.delete(`/shifts/${activeShift.id}/collaborators/${userId}`);
       const res = await api.get("/shifts/me");
-      setActiveShift(res.data);
+      setActiveShift(mapShiftFromApi(res.data));
     } catch (err) {
       console.error("Error removing collaborator:", err);
     }

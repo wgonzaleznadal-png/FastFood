@@ -10,6 +10,7 @@ import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
 import { useShiftStore } from "@/store/shiftStore";
 import { moneyNumberInputProps } from "@/lib/format";
+import { mapShiftFromApi } from "@/lib/shiftFromApi";
 
 const openShiftSchema = z.object({
   initialCash: z.number().nonnegative("Debe ser mayor o igual a 0"),
@@ -37,7 +38,7 @@ export default function OpenShiftForm({ onSuccess, showCancel, onCancel }: OpenS
     setSubmitting(true);
     try {
       const res = await api.post("/shifts/open", data);
-      setActiveShift(res.data);
+      setActiveShift(mapShiftFromApi(res.data));
       notifications.show({ title: "Turno abierto", message: "¡Listo para operar!", color: "green" });
       form.reset();
       onSuccess?.();

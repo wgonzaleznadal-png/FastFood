@@ -18,6 +18,7 @@ import { fmt, moneyNumberInputProps } from "@/lib/format";
 import { ThermalPrinter } from "@/lib/thermalPrinter";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
+import { useShiftHydrated } from "@/hooks/useShiftHydrated";
 
 interface PaymentMethod {
   id: string;
@@ -54,6 +55,12 @@ interface ShiftSummary {
   egresos: number;
   enCaja: number;
   rendicionDelivery: number;
+  /** Efectivo delivery que debía entregar el cadete (según pedidos / sistema) */
+  rendicionDeliveryExpected: number;
+  /** Egresos de caja cargados por el encargado de delivery (mismo userId) */
+  rendicionDeliveryCadeteEgresos: number;
+  /** Negativo = falta, positivo = sobra; null si no aplica */
+  rendicionDeliveryDiff: number | null;
   rendicionDeliveryBy: string | null;
   rendicionDeliveryAt: string | null;
   paymentMethods: PaymentMethod[];
@@ -88,10 +95,13 @@ const PAYMENT_ICON_MAP: Record<string, { icon: any; color: string }> = {
   debito:       { icon: IconCreditCard, color: "blue" },
 };
 
+const emptyBillCounts = () => Object.fromEntries(BILL_DENOMINATIONS.map((b) => [b.key, 0])) as Record<string, number>;
+
 export default function SistemaCajaPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { activeShift, clearShift } = useShiftStore();
+  const shiftHydrated = useShiftHydrated();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
@@ -99,9 +109,7 @@ export default function SistemaCajaPage() {
   const [egresoDrawerOpen, setEgresoDrawerOpen] = useState(false);
   const [closing, setClosing] = useState(false);
 
-  const [billCounts, setBillCounts] = useState<Record<string, number>>(
-    Object.fromEntries(BILL_DENOMINATIONS.map((b) => [b.key, 0]))
-  );
+  const [billCounts, setBillCounts] = useState<Record<string, number>>(emptyBillCounts);
 
   const [egresoAmount, setEgresoAmount] = useState<number | string>("");
   const [egresoDescription, setEgresoDescription] = useState("");
@@ -120,12 +128,38 @@ export default function SistemaCajaPage() {
   }, []);
 
   useEffect(() => {
+    if (!shiftHydrated) return;
     if (!activeShift) {
       router.push("/dashboard/caja");
       return;
     }
     fetchSummary();
-  }, [activeShift]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shiftHydrated, activeShift]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!activeShift?.id) return;
+    const k = `gastrodash-bills-${activeShift.id}`;
+    try {
+      const raw = sessionStorage.getItem(k);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, number>;
+        setBillCounts({ ...emptyBillCounts(), ...parsed });
+      } else {
+        setBillCounts(emptyBillCounts());
+      }
+    } catch {
+      setBillCounts(emptyBillCounts());
+    }
+  }, [activeShift?.id]);
+
+  useEffect(() => {
+    if (!activeShift?.id) return;
+    try {
+      sessionStorage.setItem(`gastrodash-bills-${activeShift.id}`, JSON.stringify(billCounts));
+    } catch {
+      /* ignore */
+    }
+  }, [activeShift?.id, billCounts]);
 
   const fetchSummary = useCallback(async () => {
     if (!activeShift) return;
@@ -138,6 +172,22 @@ export default function SistemaCajaPage() {
       const cashDelivery = Number(data.cashSalesDelivery || 0);
       const egresos = Number(data.totalExpenses || 0);
       const rendicionDelivery = Number(data.shift?.deliverySettlementAmount || activeShift.deliverySettlementAmount || 0);
+      const rendicionDeliveryCadeteEgresos = Number(data.deliveryCadeteEgresos ?? 0);
+      const fromDbExpected = data.shift?.deliverySettlementExpectedCash != null
+        ? Number(data.shift.deliverySettlementExpectedCash)
+        : null;
+      const rendicionDeliveryExpected =
+        fromDbExpected != null && !Number.isNaN(fromDbExpected) && fromDbExpected > 0
+          ? fromDbExpected
+          : rendicionDelivery > 0
+            ? cashDelivery - rendicionDeliveryCadeteEgresos
+            : 0;
+      let rendicionDeliveryDiff: number | null = null;
+      if (data.shift?.deliverySettlementDifference != null && data.shift.deliverySettlementDifference !== "") {
+        rendicionDeliveryDiff = Number(data.shift.deliverySettlementDifference);
+      } else if (rendicionDelivery > 0 && rendicionDeliveryExpected > 0) {
+        rendicionDeliveryDiff = rendicionDelivery - rendicionDeliveryExpected;
+      }
       // Cajón = Inicial + Efectivo LOCAL + Rendición Delivery - Egresos
       const enCaja = Number(activeShift.initialCash) + cashLocal - egresos + rendicionDelivery;
 
@@ -154,6 +204,9 @@ export default function SistemaCajaPage() {
         egresos,
         enCaja,
         rendicionDelivery,
+        rendicionDeliveryExpected,
+        rendicionDeliveryCadeteEgresos,
+        rendicionDeliveryDiff,
         rendicionDeliveryBy: data.shift?.deliverySettlementBy || null,
         rendicionDeliveryAt: data.shift?.deliverySettlementAt || null,
         paymentMethods,
@@ -241,6 +294,8 @@ export default function SistemaCajaPage() {
             deliverySettlement: summary.rendicionDelivery > 0 ? {
               amount: summary.rendicionDelivery,
               by: summary.rendicionDeliveryBy || "N/A",
+              expectedAmount: summary.rendicionDeliveryExpected,
+              difference: summary.rendicionDeliveryDiff,
             } : null,
             cashSalesLocal: summary.cashSalesLocal,
             finalCash: totalBilletes,
@@ -260,6 +315,11 @@ export default function SistemaCajaPage() {
       }
 
       notifications.show({ title: "Caja cerrada", message: "El turno fue cerrado correctamente", color: "green" });
+      try {
+        if (activeShift?.id) sessionStorage.removeItem(`gastrodash-bills-${activeShift.id}`);
+      } catch {
+        /* ignore */
+      }
       clearShift();
       router.push("/dashboard/caja");
     } catch (err) {
@@ -268,6 +328,10 @@ export default function SistemaCajaPage() {
       setClosing(false);
     }
   };
+
+  if (!shiftHydrated) {
+    return <Center h={400}><Loader color="orange" /></Center>;
+  }
 
   if (loading) {
     return <Center h={400}><Loader color="orange" /></Center>;
@@ -341,6 +405,61 @@ export default function SistemaCajaPage() {
             </Badge>
           )}
         </Group>
+
+        {summary.rendicionDelivery > 0 && (
+          <Paper mt="md" p="md" radius="md" withBorder style={{ background: "rgba(59, 130, 246, 0.06)", borderColor: "rgba(59, 130, 246, 0.25)" }}>
+            <Group gap="xs" mb="sm">
+              <IconTruck size={18} color="#3b82f6" />
+              <Text fw={700} size="sm">Rendición delivery</Text>
+            </Group>
+            <Stack gap={6}>
+              <Group justify="space-between">
+                <Text size="sm" c="dimmed">Encargado</Text>
+                <Text size="sm" fw={600}>{summary.rendicionDeliveryBy || "—"}</Text>
+              </Group>
+              <Group justify="space-between">
+                <Text size="sm" c="dimmed">Efectivo cobrado (delivery)</Text>
+                <Text size="sm" fw={600} c="orange">{fmt(summary.cashSalesDelivery)}</Text>
+              </Group>
+              {summary.rendicionDeliveryCadeteEgresos > 0 && (
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Egresos de caja del encargado</Text>
+                  <Text size="sm" fw={600} c="red">-{fmt(summary.rendicionDeliveryCadeteEgresos)}</Text>
+                </Group>
+              )}
+              <Group justify="space-between">
+                <Text size="sm" c="dimmed">Neto a rendir (sistema)</Text>
+                <Text size="sm" fw={700} c="orange">{fmt(summary.rendicionDeliveryExpected)}</Text>
+              </Group>
+              <Group justify="space-between">
+                <Text size="sm" c="dimmed">Entregó al cajero</Text>
+                <Text size="sm" fw={700} c="blue">{fmt(summary.rendicionDelivery)}</Text>
+              </Group>
+              {summary.rendicionDeliveryDiff != null && summary.rendicionDeliveryDiff !== 0 && (
+                <Alert
+                  color={summary.rendicionDeliveryDiff < 0 ? "red" : "yellow"}
+                  icon={<IconAlertTriangle size={16} />}
+                  radius="md"
+                  mt="xs"
+                >
+                  <Text size="sm" fw={600}>
+                    {summary.rendicionDeliveryDiff < 0
+                      ? `Falta en rendición: ${fmt(Math.abs(summary.rendicionDeliveryDiff))} (quedó registrado en el turno)`
+                      : `Sobró en rendición: ${fmt(summary.rendicionDeliveryDiff)}`}
+                  </Text>
+                </Alert>
+              )}
+              {summary.rendicionDeliveryDiff === 0 && (
+                <Text size="xs" c="dimmed">Cuadre exacto con el neto esperado (cobrado − egresos del encargado).</Text>
+              )}
+              {summary.rendicionDeliveryAt && (
+                <Text size="xs" c="dimmed">
+                  Registrado: {new Date(summary.rendicionDeliveryAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
+                </Text>
+              )}
+            </Stack>
+          </Paper>
+        )}
       </Paper>
 
       {/* Métodos de pago */}
@@ -468,15 +587,44 @@ export default function SistemaCajaPage() {
                     <IconTruck size={16} color="#3b82f6" />
                     <Text size="sm" fw={700}>Rendición Delivery</Text>
                   </Group>
-                  <Group justify="space-between">
-                    <Text size="sm" c="dimmed">Encargado: <Text span fw={600}>{summary.rendicionDeliveryBy || "—"}</Text></Text>
-                    <Text size="sm" fw={700} c="blue">{fmt(summary.rendicionDelivery)}</Text>
-                  </Group>
-                  {summary.rendicionDeliveryAt && (
-                    <Text size="xs" c="dimmed" mt={4}>
-                      Rendido: {new Date(summary.rendicionDeliveryAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                    </Text>
-                  )}
+                  <Stack gap={6}>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">Encargado</Text>
+                      <Text size="sm" fw={600}>{summary.rendicionDeliveryBy || "—"}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">Efectivo cobrado (delivery)</Text>
+                      <Text size="sm" fw={600} c="orange">{fmt(summary.cashSalesDelivery)}</Text>
+                    </Group>
+                    {summary.rendicionDeliveryCadeteEgresos > 0 && (
+                      <Group justify="space-between">
+                        <Text size="sm" c="dimmed">Egresos del encargado</Text>
+                        <Text size="sm" fw={600} c="red">-{fmt(summary.rendicionDeliveryCadeteEgresos)}</Text>
+                      </Group>
+                    )}
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">Neto a rendir (sistema)</Text>
+                      <Text size="sm" fw={700} c="orange">{fmt(summary.rendicionDeliveryExpected)}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">Entregó al cajero</Text>
+                      <Text size="sm" fw={700} c="blue">{fmt(summary.rendicionDelivery)}</Text>
+                    </Group>
+                    {summary.rendicionDeliveryDiff != null && summary.rendicionDeliveryDiff !== 0 && (
+                      <Alert color={summary.rendicionDeliveryDiff < 0 ? "red" : "yellow"} icon={<IconAlertTriangle size={14} />} p="xs">
+                        <Text size="xs" fw={600}>
+                          {summary.rendicionDeliveryDiff < 0
+                            ? `Falta: ${fmt(Math.abs(summary.rendicionDeliveryDiff))}`
+                            : `Sobra: ${fmt(summary.rendicionDeliveryDiff)}`}
+                        </Text>
+                      </Alert>
+                    )}
+                    {summary.rendicionDeliveryAt && (
+                      <Text size="xs" c="dimmed">
+                        {new Date(summary.rendicionDeliveryAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
+                      </Text>
+                    )}
+                  </Stack>
                 </Paper>
                 <Divider />
               </>

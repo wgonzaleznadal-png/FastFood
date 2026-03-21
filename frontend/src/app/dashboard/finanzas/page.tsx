@@ -109,6 +109,8 @@ interface ShiftDetail {
   counts: { total: number; paid: number; cancelled: number; delivery: number; local: number };
   cashSalesLocal: number;
   cashSalesDelivery: number;
+  /** Egresos de caja del encargado de delivery (mismo userId al cerrar rendición) */
+  deliveryCadeteEgresos?: number;
   productSummary?: Array<{ name: string; kg: number; units: number; revenue: number }>;
   totalVolumeKg?: number;
 }
@@ -536,21 +538,88 @@ export default function FinanzasPage() {
               )}
 
               {/* Rendición Delivery */}
-              {shiftDetail.shift?.deliverySettlementAmount && Number(shiftDetail.shift.deliverySettlementAmount) > 0 && (
-                <>
-                  <Paper p="md" radius="md" style={{ background: "rgba(59, 130, 246, 0.05)", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
-                    <Group gap="xs" mb="xs">
-                      <IconTruck size={16} color="#3b82f6" />
-                      <Text size="sm" fw={700}>Rendición Delivery</Text>
-                    </Group>
-                    <Group justify="space-between">
-                      <Text size="sm" c="dimmed">Encargado: <Text span fw={600}>{shiftDetail.shift.deliverySettlementBy || "—"}</Text></Text>
-                      <Text size="sm" fw={700} c="blue">{fmt(Number(shiftDetail.shift.deliverySettlementAmount))}</Text>
-                    </Group>
-                  </Paper>
-                  <Divider />
-                </>
-              )}
+              {shiftDetail.shift?.deliverySettlementAmount && Number(shiftDetail.shift.deliverySettlementAmount) > 0 && (() => {
+                const deliveryAmt = Number(shiftDetail.shift.deliverySettlementAmount);
+                const cadeteEgresos = Number(shiftDetail.deliveryCadeteEgresos ?? 0);
+                const deliveryGross = Number(shiftDetail.cashSalesDelivery || 0);
+                const expDb =
+                  shiftDetail.shift.deliverySettlementExpectedCash != null &&
+                  shiftDetail.shift.deliverySettlementExpectedCash !== ""
+                    ? Number(shiftDetail.shift.deliverySettlementExpectedCash)
+                    : NaN;
+                const deliveryExpected =
+                  !Number.isNaN(expDb) && expDb > 0 ? expDb : deliveryGross - cadeteEgresos;
+                let deliveryDiff: number | null = null;
+                if (
+                  shiftDetail.shift.deliverySettlementDifference != null &&
+                  shiftDetail.shift.deliverySettlementDifference !== ""
+                ) {
+                  deliveryDiff = Number(shiftDetail.shift.deliverySettlementDifference);
+                } else if (deliveryAmt > 0 && deliveryExpected > 0) {
+                  deliveryDiff = deliveryAmt - deliveryExpected;
+                }
+                return (
+                  <>
+                    <Paper p="md" radius="md" style={{ background: "rgba(59, 130, 246, 0.05)", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                      <Group gap="xs" mb="xs">
+                        <IconTruck size={16} color="#3b82f6" />
+                        <Text size="sm" fw={700}>Rendición Delivery</Text>
+                      </Group>
+                      <Stack gap={6}>
+                        <Group justify="space-between">
+                          <Text size="sm" c="dimmed">Encargado</Text>
+                          <Text size="sm" fw={600}>{shiftDetail.shift.deliverySettlementBy || "—"}</Text>
+                        </Group>
+                        <Group justify="space-between">
+                          <Text size="sm" c="dimmed">Efectivo cobrado (delivery)</Text>
+                          <Text size="sm" fw={600} c="orange">{fmt(deliveryGross)}</Text>
+                        </Group>
+                        {cadeteEgresos > 0 && (
+                          <Group justify="space-between">
+                            <Text size="sm" c="dimmed">Egresos de caja del encargado</Text>
+                            <Text size="sm" fw={600} c="red">-{fmt(cadeteEgresos)}</Text>
+                          </Group>
+                        )}
+                        <Group justify="space-between">
+                          <Text size="sm" c="dimmed">Neto a rendir (sistema)</Text>
+                          <Text size="sm" fw={700} c="orange">{fmt(deliveryExpected)}</Text>
+                        </Group>
+                        <Group justify="space-between">
+                          <Text size="sm" c="dimmed">Entregó al cajero</Text>
+                          <Text size="sm" fw={700} c="blue">{fmt(deliveryAmt)}</Text>
+                        </Group>
+                        {deliveryDiff != null && deliveryDiff !== 0 && (
+                          <Alert
+                            color={deliveryDiff < 0 ? "red" : "yellow"}
+                            icon={<IconAlertTriangle size={14} />}
+                            p="xs"
+                            radius="md"
+                          >
+                            <Text size="xs" fw={600}>
+                              {deliveryDiff < 0
+                                ? `Falta en rendición: ${fmt(Math.abs(deliveryDiff))}`
+                                : `Sobró en rendición: ${fmt(deliveryDiff)}`}
+                            </Text>
+                          </Alert>
+                        )}
+                        {deliveryDiff === 0 && (
+                          <Text size="xs" c="dimmed">Cuadre exacto con el neto esperado (cobrado − egresos del encargado).</Text>
+                        )}
+                        {shiftDetail.shift.deliverySettlementAt && (
+                          <Text size="xs" c="dimmed">
+                            Registrado:{" "}
+                            {new Date(shiftDetail.shift.deliverySettlementAt).toLocaleString("es-AR", {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })}
+                          </Text>
+                        )}
+                      </Stack>
+                    </Paper>
+                    <Divider />
+                  </>
+                );
+              })()}
 
               {/* Cuadre de caja */}
               {shiftDetail.shift?.status === "CLOSED" && (

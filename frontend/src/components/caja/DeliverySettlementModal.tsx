@@ -45,8 +45,13 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
 
     setLoading(true);
     try {
-      const res = await api.get(`/shifts/${shiftId}/delivery`);
-      const deliveryOrders = res.data;
+      const [ordersRes, expensesRes] = await Promise.all([
+        api.get(`/shifts/${shiftId}/delivery`),
+        api.get(`/shifts/${shiftId}/expenses`).catch(() => ({ data: [] as any[] })),
+      ]);
+      const deliveryOrders = ordersRes.data;
+      const expenses: any[] = Array.isArray(expensesRes.data) ? expensesRes.data : [];
+
       const paidOrders = deliveryOrders.filter((o: any) => o.isPaid);
       const cashOrders = paidOrders.filter((o: any) =>
         o.paymentMethod === "EFECTIVO"
@@ -55,15 +60,23 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
         o.paymentMethod === "MERCADO PAGO" || o.paymentMethod === "MERCADOPAGO"
       );
 
-      const totalCash = cashOrders.reduce((sum: number, o: any) =>
+      const grossCash = cashOrders.reduce((sum: number, o: any) =>
         sum + Number(o.totalPrice), 0
       );
+
+      const cadeteUid = useCollaboratorSelect && deliveryPersonUserId ? deliveryPersonUserId : null;
+      const cadeteEgresos = cadeteUid
+        ? expenses.filter((e) => e.userId === cadeteUid).reduce((s, e) => s + Number(e.amount), 0)
+        : 0;
+      const netExpected = grossCash - cadeteEgresos;
 
       setSettlementData({
         totalOrders: paidOrders.length,
         cashOrders: cashOrders.length,
         mpOrders: mpOrders.length,
-        totalCash,
+        totalCash: grossCash,
+        cadeteEgresos,
+        netExpected,
         orders: cashOrders,
       });
     } catch (err) {
@@ -135,8 +148,10 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
           cashOrdersCount: data.cashOrdersCount ?? settlementData?.cashOrders ?? 0,
           mpOrdersCount: data.mpOrdersCount ?? settlementData?.mpOrders ?? 0,
           totalCash: data.totalDeliveryCash ?? settlementData?.totalCash ?? 0,
+          deliveryPersonExpensesTotal: data.deliveryPersonExpensesTotal ?? settlementData?.cadeteEgresos ?? 0,
+          netExpectedCash: data.netExpectedDeliveryCash ?? settlementData?.netExpected ?? 0,
           receivedAmount: data.receivedAmount ?? receivedAmount,
-          difference: data.difference ?? (receivedAmount - (settlementData?.totalCash ?? 0)),
+          difference: data.difference ?? (receivedAmount - (settlementData?.netExpected ?? settlementData?.totalCash ?? 0)),
           createdAt: new Date().toISOString(),
         },
       });
@@ -154,7 +169,9 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
     onClose();
   };
 
-  const difference = settlementData ? receivedAmount - settlementData.totalCash : 0;
+  const difference = settlementData
+    ? receivedAmount - (settlementData.netExpected ?? settlementData.totalCash)
+    : 0;
 
   return (
     <Modal
@@ -211,8 +228,24 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
                 </Group>
                 <Divider />
                 <Group justify="space-between">
-                  <Text fw={700}>Total Efectivo</Text>
-                  <Text fw={700} size="lg" c="orange">{fmt(settlementData.totalCash)}</Text>
+                  <Text size="sm" c="dimmed">Efectivo cobrado (delivery)</Text>
+                  <Text fw={600} c="orange">{fmt(settlementData.totalCash)}</Text>
+                </Group>
+                {Number(settlementData.cadeteEgresos) > 0 && (
+                  <>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">Egresos de caja del encargado</Text>
+                      <Text fw={600} c="red">-{fmt(Number(settlementData.cadeteEgresos))}</Text>
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                      Los egresos que cargó este usuario en el turno descuentan de lo que debe rendir.
+                    </Text>
+                  </>
+                )}
+                <Divider />
+                <Group justify="space-between">
+                  <Text fw={700}>Neto a entregar al cajero</Text>
+                  <Text fw={700} size="lg" c="orange">{fmt(settlementData.netExpected ?? settlementData.totalCash)}</Text>
                 </Group>
               </Stack>
             </Paper>

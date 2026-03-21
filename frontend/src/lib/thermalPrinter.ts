@@ -192,7 +192,14 @@ deliverySettlement?: {
 
   mpOrdersCount: number;
 
+  /** Efectivo cobrado en delivery (bruto) */
   totalCash: number;
+
+  /** Egresos de caja registrados por el encargado */
+  deliveryPersonExpensesTotal?: number;
+
+  /** Bruto - egresos: neto a entregar */
+  netExpectedCash?: number;
 
   receivedAmount: number;
 
@@ -222,7 +229,14 @@ shiftClosing?: {
 
   expenses: Array<{ description: string; amount: number }>;
 
-  deliverySettlement: { amount: number; by: string } | null;
+  deliverySettlement: {
+    amount: number;
+    by: string;
+    /** Efectivo que debía rendir según pedidos (sistema) */
+    expectedAmount?: number | null;
+    /** Negativo = falta, positivo = sobra */
+    difference?: number | null;
+  } | null;
 
   finalCash: number;
 
@@ -234,7 +248,7 @@ shiftClosing?: {
 
   cashSalesLocal?: number;
 
-  billCounts: Record<string, number>;
+  billCounts?: Record<string, number>;
 
 };
 
@@ -484,18 +498,39 @@ if (data.shiftClosing) {
   }
 
   if (c.deliverySettlement) {
+    const ds = c.deliverySettlement;
+    const exp =
+      ds.expectedAmount != null && !Number.isNaN(Number(ds.expectedAmount))
+        ? Number(ds.expectedAmount)
+        : null;
+    const rendDiff =
+      ds.difference != null && !Number.isNaN(Number(ds.difference))
+        ? Number(ds.difference)
+        : null;
     ticket += BOLD_ON + 'RENDICION DELIVERY' + BOLD_OFF + NEWLINE;
-    ticket += 'Encargado: ' + sanitizeText(c.deliverySettlement.by) + NEWLINE;
-    ticket += 'Efectivo entregado: ' + formatPrice(c.deliverySettlement.amount) + NEWLINE;
+    ticket += 'Encargado: ' + sanitizeText(ds.by) + NEWLINE;
+    if (exp != null && exp > 0) {
+      ticket += 'Debia rendir:       ' + formatPrice(exp) + NEWLINE;
+    }
+    ticket += 'Entrego al cajero:  ' + formatPrice(ds.amount) + NEWLINE;
+    if (rendDiff != null && rendDiff !== 0) {
+      ticket +=
+        rendDiff < 0
+          ? BOLD_ON + 'FALTA rendicion:   ' + BOLD_OFF + formatPrice(Math.abs(rendDiff)) + NEWLINE
+          : BOLD_ON + 'SOBRA rendicion:   ' + BOLD_OFF + formatPrice(rendDiff) + NEWLINE;
+    } else if (exp != null && exp > 0) {
+      ticket += 'Cuadre rendicion:   OK' + NEWLINE;
+    }
     ticket += linea + NEWLINE;
   }
 
+  const billMap = c.billCounts ?? {};
   const DENOM_ORDER = [20000, 10000, 2000, 1000, 500, 200, 100];
-  const hasBills = DENOM_ORDER.some(d => (c.billCounts[String(d)] || 0) > 0);
+  const hasBills = DENOM_ORDER.some(d => (billMap[String(d)] || 0) > 0);
   if (hasBills) {
     ticket += BOLD_ON + 'CONTEO DE BILLETES' + BOLD_OFF + NEWLINE;
     for (const d of DENOM_ORDER) {
-      const count = c.billCounts[String(d)] || 0;
+      const count = billMap[String(d)] || 0;
       if (count > 0) {
         ticket += '$' + d.toLocaleString('es-AR') + ' x ' + count + ' = ' + formatPrice(count * d) + NEWLINE;
       }
@@ -553,9 +588,16 @@ if (data.deliverySettlement) {
   ticket += 'Por Mercado Pago: ' + s.mpOrdersCount + NEWLINE;
   ticket += 'Por Efectivo: ' + s.cashOrdersCount + NEWLINE;
   ticket += linea + NEWLINE;
-  ticket += BOLD_ON + 'Total Efectivo: ' + BOLD_OFF + formatPrice(s.totalCash) + NEWLINE;
-  ticket += BOLD_ON + 'Efectivo Entregado: ' + BOLD_OFF + formatPrice(s.receivedAmount) + NEWLINE;
-  ticket += BOLD_ON + 'Diferencia: ' + BOLD_OFF + formatPrice(s.difference) + NEWLINE;
+  ticket += BOLD_ON + 'Efectivo cobrado: ' + BOLD_OFF + formatPrice(s.totalCash) + NEWLINE;
+  const expTotal = Number(s.deliveryPersonExpensesTotal ?? 0);
+  if (expTotal > 0) {
+    ticket += '- Egresos encargado: ' + formatPrice(expTotal) + NEWLINE;
+    const net = s.netExpectedCash != null && !Number.isNaN(Number(s.netExpectedCash)) ? Number(s.netExpectedCash) : s.totalCash - expTotal;
+    ticket += BOLD_ON + 'Neto a rendir:    ' + BOLD_OFF + formatPrice(net) + NEWLINE;
+  }
+  ticket += BOLD_ON + 'Entregado cajero: ' + BOLD_OFF + formatPrice(s.receivedAmount) + NEWLINE;
+  const diffSign = s.difference === 0 ? '' : s.difference > 0 ? '+ ' : '- ';
+  ticket += BOLD_ON + 'Diferencia: ' + BOLD_OFF + diffSign + formatPrice(Math.abs(s.difference)) + NEWLINE;
   ticket += linea + NEWLINE;
   ticket += NEWLINE;
   ticket += BOLD_ON + 'FIRMA ENCARGADO DELIVERY:' + BOLD_OFF + NEWLINE;

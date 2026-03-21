@@ -22,7 +22,14 @@ export interface ActiveShift {
   openedBy: { id: string; name: string; role: string };
   collaborators?: ShiftCollaborator[];
   notes?: string;
+  /** Efectivo que el cadete entregó al cajero */
   deliverySettlementAmount?: number;
+  /** Efectivo delivery que debía rendir según pedidos cobrados */
+  deliverySettlementExpectedCash?: number;
+  /** entregado - esperado (negativo = falta) */
+  deliverySettlementDifference?: number;
+  deliverySettlementBy?: string | null;
+  deliverySettlementAt?: string | null;
 }
 
 interface ShiftState {
