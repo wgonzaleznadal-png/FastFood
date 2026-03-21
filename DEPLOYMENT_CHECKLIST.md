@@ -2,7 +2,7 @@
 
 ## 📦 Repositorio
 
-- ✅ Código pusheado a: `https://github.com/wgonzaleznadal-png/gastrodash-new`
+- ✅ Código pusheado a: `https://github.com/wgonzaleznadal-png/FastFood`
 - ✅ Branch principal: `main`
 - ✅ Build exitoso (Backend + Frontend)
 - ✅ TypeScript sin errores
@@ -25,7 +25,7 @@
 ### Configuración Inicial
 - [ ] Crear cuenta en https://railway.app
 - [ ] Crear nuevo proyecto
-- [ ] Conectar repositorio: `wgonzaleznadal-png/gastrodash-new`
+- [ ] Conectar repositorio: `wgonzaleznadal-png/FastFood`
 - [ ] Configurar Root Directory: `backend`
 
 ### Base de Datos
@@ -58,7 +58,7 @@
 ### Configuración Inicial
 - [ ] Crear cuenta en https://vercel.com
 - [ ] Importar proyecto desde GitHub
-- [ ] Seleccionar repositorio: `wgonzaleznadal-png/gastrodash-new`
+- [ ] Seleccionar repositorio: `wgonzaleznadal-png/FastFood`
 - [ ] Configurar Root Directory: `frontend`
 
 ### Variables de Entorno
@@ -67,7 +67,7 @@
 ### Deployment
 - [ ] Click en "Deploy"
 - [ ] Esperar que el build termine (2-3 min)
-- [ ] Copiar la URL generada (ej: `https://gastrodash-new.vercel.app`)
+- [ ] Copiar la URL generada (ej: `https://fast-food-ecru-three.vercel.app`)
 
 ---
 
@@ -117,7 +117,7 @@ Health:   https://_____________________.up.railway.app/health
 ```
 Railway:  https://railway.app/dashboard
 Vercel:   https://vercel.com/dashboard
-GitHub:   https://github.com/wgonzaleznadal-png/gastrodash-new
+GitHub:   https://github.com/wgonzaleznadal-png/FastFood
 ```
 
 ### Credenciales de Prueba

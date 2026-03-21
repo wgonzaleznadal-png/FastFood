@@ -1,4 +1,15 @@
-# Migraciones Prisma en Railway (automático)
+# Deploy automático: Prisma (Railway) + Vercel
+
+**Repositorio canónico:** [github.com/wgonzaleznadal-png/FastFood](https://github.com/wgonzaleznadal-png/FastFood)
+
+| Plataforma | Qué pasa en cada `git push` a `main` |
+|------------|--------------------------------------|
+| **Railway** (backend, root `backend/`) | Build + al **inicio** del contenedor corre `prisma migrate deploy` y luego el servidor. |
+| **Vercel** (frontend, root `frontend/`) | Solo build de Next.js. **No** corre Prisma ni toca la DB (no hace falta). |
+
+---
+
+## Migraciones Prisma en Railway
 
 Las migraciones se aplican **al arrancar** el backend; no hace falta correr `prisma migrate deploy` a mano en cada deploy.
 

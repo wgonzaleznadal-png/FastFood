@@ -91,7 +91,7 @@ O usa: https://generate-secret.vercel.app/32
 **Formato**: `https://tu-dominio.com`
 
 **Ejemplos**:
-- Vercel: `https://gastrodash-new.vercel.app`
+- Vercel: `https://tu-proyecto.vercel.app`
 - Dominio custom: `https://www.fastfood.com.ar`
 - Varios orígenes: `https://www.fastfood.com.ar,https://fastfood.com.ar`
 

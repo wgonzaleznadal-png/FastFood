@@ -2,6 +2,8 @@
 
 > El Sistema Operativo para tu negocio gastronómico. Simple, rápido y poderoso.
 
+**Repositorio:** [github.com/wgonzaleznadal-png/FastFood](https://github.com/wgonzaleznadal-png/FastFood) · Deploy: Railway (API + DB + migraciones Prisma) + Vercel (frontend). Ver [`docs/RAILWAY_PRISMA_MIGRATE.md`](docs/RAILWAY_PRISMA_MIGRATE.md).
+
 ## Arquitectura
 
 ```

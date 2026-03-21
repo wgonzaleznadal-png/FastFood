@@ -4,7 +4,7 @@
 
 - Cuenta en [Railway](https://railway.app) (gratis)
 - Cuenta en [Vercel](https://vercel.com) (gratis)
-- Este repositorio: `https://github.com/wgonzaleznadal-png/gastrodash-new`
+- Este repositorio: `https://github.com/wgonzaleznadal-png/FastFood`
 
 ---
 
@@ -14,7 +14,7 @@
 1. Ve a https://railway.app
 2. Click en **"New Project"**
 3. Selecciona **"Deploy from GitHub repo"**
-4. Busca y selecciona: `wgonzaleznadal-png/gastrodash-new`
+4. Busca y selecciona: `wgonzaleznadal-png/FastFood`
 
 ### 1.2 Configurar Root Directory
 1. Click en el servicio creado
@@ -68,7 +68,7 @@ Deberías ver:
 1. Ve a https://vercel.com
 2. Click en **"Add New..."** → **"Project"**
 3. Click en **"Import Git Repository"**
-4. Busca: `wgonzaleznadal-png/gastrodash-new`
+4. Busca: `wgonzaleznadal-png/FastFood`
 5. Click **"Import"**
 
 ### 2.2 Configurar Build
@@ -92,7 +92,7 @@ En **"Environment Variables"**:
 ### 2.4 Deploy
 1. Click en **"Deploy"**
 2. Espera 2-3 minutos
-3. Vercel te dará una URL (ej: `https://gastrodash-new.vercel.app`)
+3. Vercel te dará una URL (ej: `https://fast-food-ecru-three.vercel.app`)
 
 ✅ **Frontend listo!**
 

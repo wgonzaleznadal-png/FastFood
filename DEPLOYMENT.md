@@ -15,7 +15,7 @@
 1. Ve a [railway.app](https://railway.app)
 2. Click en "New Project"
 3. Selecciona "Deploy from GitHub repo"
-4. Conecta este repositorio: `wgonzaleznadal-png/gastrodash-new`
+4. Conecta este repositorio: `wgonzaleznadal-png/FastFood`
 5. Railway detectará automáticamente la configuración de `backend/railway.json`
 
 ### 2. Agregar PostgreSQL
@@ -73,7 +73,7 @@ Railway hará automáticamente:
 
 1. Ve a [vercel.com](https://vercel.com)
 2. Click en "Add New" → "Project"
-3. Importa el repositorio: `wgonzaleznadal-png/gastrodash-new`
+3. Importa el repositorio: `wgonzaleznadal-png/FastFood`
 4. Vercel detectará automáticamente Next.js
 
 ### 2. Configurar Build Settings
