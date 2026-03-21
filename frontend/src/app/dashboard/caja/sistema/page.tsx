@@ -14,6 +14,7 @@ import {
 } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
+import { modals } from "@mantine/modals";
 import { fmt, moneyNumberInputProps, parseMoneyInput } from "@/lib/format";
 import AddInitialCashDrawer from "@/components/caja/AddInitialCashDrawer";
 import ManualShiftIncomeDrawer from "@/components/caja/ManualShiftIncomeDrawer";
@@ -40,6 +41,17 @@ interface OrderSummary {
   isPaid: boolean;
   isDelivery: boolean;
   status: string;
+  createdAt: string;
+}
+
+interface UnpaidOrderSummary {
+  id: string;
+  orderNumber: number;
+  customerName: string;
+  totalPrice: string;
+  isDelivery: boolean;
+  status: string;
+  paymentMethod: string;
   createdAt: string;
 }
 
@@ -90,7 +102,9 @@ interface ShiftSummary {
     cancelled: number;
     delivery: number;
     local: number;
+    unpaid: number;
   };
+  unpaidOrders: UnpaidOrderSummary[];
 }
 
 const BILL_DENOMINATIONS = [
@@ -138,17 +152,6 @@ export default function SistemaCajaPage() {
   const [savingEgreso, setSavingEgreso] = useState(false);
 
   useEffect(() => {
-    const action = searchParams.get("action");
-    if (action === "close") setCloseDrawerOpen(true);
-  }, [searchParams]);
-
-  useEffect(() => {
-    const handleOpenCloseDrawer = () => setCloseDrawerOpen(true);
-    window.addEventListener("openCloseDrawer", handleOpenCloseDrawer);
-    return () => window.removeEventListener("openCloseDrawer", handleOpenCloseDrawer);
-  }, []);
-
-  useEffect(() => {
     if (!shiftHydrated) return;
     if (!activeShift) {
       router.push("/dashboard/caja");
@@ -182,8 +185,8 @@ export default function SistemaCajaPage() {
     }
   }, [activeShift?.id, billCounts]);
 
-  const fetchSummary = useCallback(async () => {
-    if (!activeShift) return;
+  const fetchSummary = useCallback(async (): Promise<ShiftSummary | null> => {
+    if (!activeShift) return null;
     setLoading(true);
     try {
       const res = await api.get(`/shifts/${activeShift.id}/summary`);
@@ -214,7 +217,6 @@ export default function SistemaCajaPage() {
       } else if (rendicionDelivery > 0 && rendicionDeliveryExpected > 0) {
         rendicionDeliveryDiff = rendicionDelivery - rendicionDeliveryExpected;
       }
-      // Cajón = Inicial + Efectivo LOCAL + Rendición − solo egresos en efectivo
       const enCaja =
         Number(activeShift.initialCash) + cashLocal + manualCashIncomeTotal - egresosCajon + rendicionDelivery;
 
@@ -224,7 +226,8 @@ export default function SistemaCajaPage() {
         color: PAYMENT_ICON_MAP[pm.id]?.color || "gray",
       }));
 
-      setSummary({
+      const baseCounts = { total: 0, paid: 0, cancelled: 0, delivery: 0, local: 0, unpaid: 0 };
+      const built: ShiftSummary = {
         ingresos: Number(data.totalSales || 0),
         cashSalesLocal: cashLocal,
         cashSalesDelivery: cashDelivery,
@@ -242,14 +245,61 @@ export default function SistemaCajaPage() {
         orders: data.orders || [],
         expenses: data.expenses || [],
         manualIncomes: data.manualIncomes || [],
-        counts: data.counts || { total: 0, paid: 0, cancelled: 0, delivery: 0, local: 0 },
-      });
+        counts: { ...baseCounts, ...(data.counts || {}) },
+        unpaidOrders: data.unpaidOrders || [],
+      };
+      setSummary(built);
+      return built;
     } catch (err) {
       showApiError(err, "Error al cargar resumen");
+      return null;
     } finally {
       setLoading(false);
     }
   }, [activeShift]);
+
+  function openCloseDrawerAfterUnpaidCheck(s: ShiftSummary) {
+    const n = s.counts.unpaid ?? 0;
+    if (n > 0) {
+      modals.openConfirmModal({
+        title: "Pedidos sin cobrar",
+        children: (
+          <Stack gap="sm">
+            <Text size="sm">
+              Hay <strong>{n}</strong> pedido{ n === 1 ? "" : "s"} sin cobrar en este turno. El efectivo esperado y los totales por método no incluyen esos importes hasta que los cobres.
+            </Text>
+            <Text size="xs" c="dimmed">
+              Podés volver a Caja para cobrarlos, o confirmar para abrir el cierre de todas formas.
+            </Text>
+          </Stack>
+        ),
+        labels: { confirm: "Continuar", cancel: "Volver" },
+        confirmProps: { color: "orange" },
+        onConfirm: () => setCloseDrawerOpen(true),
+      });
+    } else {
+      setCloseDrawerOpen(true);
+    }
+  }
+
+  const requestOpenCloseDrawer = useCallback(async () => {
+    const s = await fetchSummary();
+    if (s) openCloseDrawerAfterUnpaidCheck(s);
+  }, [fetchSummary]);
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "close") return;
+    router.replace("/dashboard/caja/sistema", { scroll: false });
+    void requestOpenCloseDrawer();
+  }, [searchParams, router, requestOpenCloseDrawer]);
+
+  useEffect(() => {
+    const handleOpenCloseDrawer = () => {
+      void requestOpenCloseDrawer();
+    };
+    window.addEventListener("openCloseDrawer", handleOpenCloseDrawer);
+    return () => window.removeEventListener("openCloseDrawer", handleOpenCloseDrawer);
+  }, [requestOpenCloseDrawer]);
 
   const handleCreateExpense = async () => {
     if (!activeShift || !egresoAmount || egresoAmount <= 0 || !egresoDescription.trim()) {
@@ -393,7 +443,7 @@ export default function SistemaCajaPage() {
             <Button variant="light" color="teal" leftSection={<IconCash size={16} />} onClick={() => setAddCambioDrawerOpen(true)}>
               Agregar cambio
             </Button>
-            <Button color="red" leftSection={<IconX size={16} />} onClick={() => { fetchSummary(); setCloseDrawerOpen(true); }}>
+            <Button color="red" leftSection={<IconX size={16} />} onClick={() => void requestOpenCloseDrawer()}>
               Cerrar Caja
             </Button>
           </Group>
@@ -587,6 +637,12 @@ export default function SistemaCajaPage() {
                   <Text size="sm" fw={700} c="green">{summary.counts.paid}</Text>
                 </Group>
                 <Group gap="xs">
+                  <Text size="sm" c="dimmed">Sin cobrar:</Text>
+                  <Text size="sm" fw={700} c={summary.counts.unpaid > 0 ? "orange" : "dimmed"}>
+                    {summary.counts.unpaid}
+                  </Text>
+                </Group>
+                <Group gap="xs">
                   <Text size="sm" c="dimmed">Retiro:</Text>
                   <Text size="sm" fw={600}>{summary.counts.local}</Text>
                 </Group>
@@ -601,6 +657,24 @@ export default function SistemaCajaPage() {
                   </Group>
                 )}
               </SimpleGrid>
+              {summary.counts.unpaid > 0 && (
+                <Alert mt="md" color="orange" icon={<IconAlertTriangle size={18} />} radius="md">
+                  <Text size="sm" fw={600} mb="xs">
+                    {summary.counts.unpaid} pedido{summary.counts.unpaid === 1 ? "" : "s"} pendiente{summary.counts.unpaid === 1 ? "" : "s"} de cobro
+                  </Text>
+                  <Stack gap={6}>
+                    {summary.unpaidOrders.map((o) => (
+                      <Group key={o.id} justify="space-between" wrap="nowrap">
+                        <Text size="xs" c="dimmed">
+                          #{o.orderNumber} · {o.customerName}
+                          {o.isDelivery ? " · delivery" : " · retiro"}
+                        </Text>
+                        <Text size="xs" fw={600}>{fmt(Number(o.totalPrice))}</Text>
+                      </Group>
+                    ))}
+                  </Stack>
+                </Alert>
+              )}
             </Paper>
 
             {/* ── VENTAS POR MÉTODO ── */}
@@ -715,12 +789,7 @@ export default function SistemaCajaPage() {
               <Stack gap={4}>
                 <Group justify="space-between" wrap="nowrap" align="center">
                   <Text size="sm" c="dimmed">Caja Inicial</Text>
-                  <Group gap="xs" wrap="nowrap">
-                    <Text size="sm" fw={600}>{fmt(Number(activeShift.initialCash))}</Text>
-                    <Button size="compact-xs" variant="light" color="teal" onClick={() => setAddCambioDrawerOpen(true)}>
-                      + Cambio
-                    </Button>
-                  </Group>
+                  <Text size="sm" fw={600}>{fmt(Number(activeShift.initialCash))}</Text>
                 </Group>
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">+ Efectivo Local (retiro)</Text>

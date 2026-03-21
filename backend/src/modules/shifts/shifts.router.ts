@@ -201,6 +201,7 @@ router.get("/:id/summary", async (req: Request, res: Response, next: NextFunctio
       cashDrawerExpenses: 0,
       manualCashIncomeTotal: 0,
       manualIncomes: [],
+      unpaidOrders: [],
       paymentMethods: [],
     });
   }

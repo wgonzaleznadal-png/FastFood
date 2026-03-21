@@ -343,6 +343,7 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
   const cancelledOrders = allOrders.filter((o) => o.status === "CANCELLED");
   const deliveryOrders = allOrders.filter((o) => o.isDelivery && o.status !== "CANCELLED");
   const localOrders = allOrders.filter((o) => !o.isDelivery && o.status !== "CANCELLED");
+  const unpaidOrdersList = allOrders.filter((o) => !o.isPaid && o.status !== "CANCELLED");
 
   // Efectivo separado: local (cajero recibió) vs delivery (cadete cobró)
   const cashSalesLocal = paidOrders
@@ -438,7 +439,18 @@ export async function getShiftDetailedSummary(tenantId: string, shiftId: string,
       cancelled: cancelledOrders.length,
       delivery: deliveryOrders.length,
       local: localOrders.length,
+      unpaid: unpaidOrdersList.length,
     },
+    unpaidOrders: unpaidOrdersList.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      customerName: o.customerName,
+      totalPrice: String(o.totalPrice),
+      isDelivery: o.isDelivery,
+      status: o.status,
+      paymentMethod: o.paymentMethod,
+      createdAt: o.createdAt,
+    })),
     cashSalesLocal,
     cashSalesDelivery,
     /** Ingresos manuales en efectivo (suman al esperado en cajón). */
