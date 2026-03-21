@@ -171,21 +171,20 @@ export default function WhatsAppCommandCenter({ shiftId }: Props) {
     if (pollRef.current) clearInterval(pollRef.current);
 
     if (connStatus === "open") {
-      // Conectado: poll sesiones + pedidos cada 5s
       fetchSessions();
       fetchOrders();
       if (selectedJid) fetchMessages(selectedJid);
+      // 4s: menos 429 con rate limit global del API (varias llamadas por tick)
       pollRef.current = setInterval(() => {
         fetchSessions();
         fetchOrders();
         fetchStatus();
         if (selectedJid) fetchMessages(selectedJid);
-      }, 2000);
+      }, 4000);
     } else if (connStatus === "connecting") {
-      // Esperando QR: poll rápido cada 2s para recibir el QR lo antes posible
       pollRef.current = setInterval(() => {
         fetchStatus();
-      }, 2000);
+      }, 2500);
     } else {
       // Desconectado: poll lento cada 15s
       pollRef.current = setInterval(() => {

@@ -14,7 +14,7 @@ import {
 } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
-import { fmt } from "@/lib/format";
+import { fmt, moneyNumberInputProps } from "@/lib/format";
 import { ThermalPrinter } from "@/lib/thermalPrinter";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
@@ -605,12 +605,11 @@ export default function SistemaCajaPage() {
           </Text>
           <NumberInput
             label="Monto ($)"
-            placeholder="0.00"
+            placeholder="0,00"
             min={0.01}
-            decimalScale={2}
-            prefix="$"
             value={egresoAmount}
             onChange={setEgresoAmount}
+            {...moneyNumberInputProps}
           />
           <TextInput
             label="Concepto"

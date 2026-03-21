@@ -9,6 +9,7 @@ import { IconCash } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
 import { useShiftStore } from "@/store/shiftStore";
+import { moneyNumberInputProps } from "@/lib/format";
 
 const openShiftSchema = z.object({
   initialCash: z.number().nonnegative("Debe ser mayor o igual a 0"),
@@ -55,12 +56,11 @@ export default function OpenShiftForm({ onSuccess, showCancel, onCancel }: OpenS
         </Text>
         <NumberInput
           label="Monto inicial ($)"
-          placeholder="0.00"
+          placeholder="0,00"
           min={0}
-          decimalScale={2}
-          prefix="$"
           error={form.formState.errors.initialCash?.message}
           onChange={(val) => form.setValue("initialCash", typeof val === "string" ? parseFloat(val) || 0 : val)}
+          {...moneyNumberInputProps}
         />
         <Textarea
           label="Notas (opcional)"

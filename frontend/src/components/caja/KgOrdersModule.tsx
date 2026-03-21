@@ -11,7 +11,7 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
-import { fmt } from "@/lib/format";
+import { fmt, moneyNumberInputProps } from "@/lib/format";
 import { getStatusLabel, getStatusColor } from "@/lib/orderStatus";
 import type { KgProduct } from "@/lib/types";
 import DeliveryCommandCenter from "./DeliveryCommandCenter";
@@ -1493,13 +1493,12 @@ export default function KgOrdersModule({ shiftId }: KgOrdersModuleProps) {
                 value={receivedAmount}
                 onChange={(val) => setReceivedAmount(typeof val === "string" ? parseFloat(val) || 0 : val)}
                 min={0}
-                decimalScale={2}
-                prefix="$"
                 size="lg"
                 disabled={processingPayment}
                 styles={{
                   input: { fontSize: "20px", fontWeight: 600 },
                 }}
+                {...moneyNumberInputProps}
               />
               
               {receivedAmount > 0 && (

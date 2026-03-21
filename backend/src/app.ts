@@ -82,9 +82,13 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const limiter = rateLimit({ 
-  windowMs: 15 * 60 * 1000, 
-  max: process.env.NODE_ENV === "development" ? 500 : 200
+// Límite alto: el panel de caja hace polling (WhatsApp, listas). 200/15min provocaba 429 en producción.
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.API_RATE_LIMIT_MAX ?? (process.env.NODE_ENV === "development" ? 5000 : 8000)),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === "/health" || req.path === "/health/db",
 });
 app.use(limiter);
 

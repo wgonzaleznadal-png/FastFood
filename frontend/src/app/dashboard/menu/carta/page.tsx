@@ -7,7 +7,7 @@ import { useForm } from "@mantine/form";
 import { IconPlus, IconEdit, IconTrash, IconChefHat, IconGlass, IconScale } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { api, showApiError } from "@/lib/api";
-import { fmt } from "@/lib/format";
+import { fmt, moneyNumberInputProps } from "@/lib/format";
 import PageHeader from "@/components/layout/PageHeader";
 import Drawer from "@/components/layout/Drawer";
 
@@ -100,9 +100,10 @@ export default function CartaPage() {
       // Armamos el paquete EXACTO que Prisma necesita para no explotar.
       const payload = {
         ...values,
-        section: "CARTA",    // Obligatorio: Esto no es de Kilo, es de Carta.
-        unitType: "UNIT",    // Obligatorio: Rabas/Bebidas se venden por unidad.
-        price: Number(values.price), // Aseguramos que sea un número
+        section: "CARTA",
+        unitType: "UNIT",
+        price: Number(values.price),
+        imageUrl: values.imageUrl?.trim() || undefined,
       };
 
       if (editingItem) {
@@ -232,11 +233,10 @@ export default function CartaPage() {
 
             <NumberInput
               label="Precio"
-              placeholder="0.00"
+              placeholder="0,00"
               required
               min={0}
-              decimalScale={2}
-              prefix="$"
+              {...moneyNumberInputProps}
               {...form.getInputProps("price")}
             />
 
@@ -258,7 +258,8 @@ export default function CartaPage() {
             />
 
             <TextInput
-              label="URL de imagen"
+              label="URL de imagen (opcional)"
+              description="Podés dejarlo vacío. Más adelante: subir archivo desde acá."
               placeholder="https://..."
               {...form.getInputProps("imageUrl")}
             />

@@ -11,6 +11,8 @@ NODE_ENV=production
 PORT=4000
 FRONTEND_URL=https://tu-app.vercel.app
 OPENAI_API_KEY=sk-tu-key-opcional
+# Opcional: límite de requests / 15 min (default producción 8000). Subí si tenés mucho polling.
+# API_RATE_LIMIT_MAX=12000
 ```
 
 ### Vercel (Frontend)

@@ -11,7 +11,11 @@ const createProductSchema = z.object({
   description: z.string().max(500).optional().nullable(),
   price: z.number().nonnegative(),
   pricePerKg: z.number().nonnegative().optional().nullable(),
-  imageUrl: z.string().url().optional().nullable(),
+  // Vacío "" debe ser equivalente a sin imagen (antes fallaba z.string().url() con string vacío)
+  imageUrl: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? undefined : v),
+    z.string().url().optional()
+  ),
   isAvailable: z.boolean().optional(),
   isAvailableForBot: z.boolean().optional(),
   unitType: z.enum(["UNIT", "KG", "PORTION"]).optional(),

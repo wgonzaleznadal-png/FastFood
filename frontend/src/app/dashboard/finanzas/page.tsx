@@ -19,7 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
-import { fmt } from "@/lib/format";
+import { fmt, moneyNumberInputProps } from "@/lib/format";
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 interface Expense {
@@ -760,12 +760,11 @@ export default function FinanzasPage() {
             />
             <NumberInput
               label="Monto ($)"
-              placeholder="0.00"
+              placeholder="0,00"
               min={0}
-              decimalScale={2}
-              prefix="$"
               error={form.formState.errors.amount?.message}
               onChange={(val) => form.setValue("amount", typeof val === "string" ? parseFloat(val) || 0 : val)}
+              {...moneyNumberInputProps}
             />
             <TextInput
               label="Período"

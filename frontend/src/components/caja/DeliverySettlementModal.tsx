@@ -5,7 +5,7 @@ import { Modal, Stack, Group, Text, TextInput, Button, Paper, Divider, NumberInp
 import { IconCash, IconPrinter, IconCheck } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
-import { fmt } from "@/lib/format";
+import { fmt, moneyNumberInputProps } from "@/lib/format";
 import { ThermalPrinter } from "@/lib/thermalPrinter";
 
 interface Collaborator {
@@ -224,10 +224,8 @@ export default function DeliverySettlementModal({ opened, onClose, shiftId, onSu
               onChange={(val) => setReceivedAmount(Number(val) || 0)}
               min={0}
               step={100}
-              prefix="$"
-              thousandSeparator="."
-              decimalSeparator=","
               required
+              {...moneyNumberInputProps}
             />
 
             {receivedAmount > 0 && (

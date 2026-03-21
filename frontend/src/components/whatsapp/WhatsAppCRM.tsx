@@ -171,11 +171,11 @@ export default function WhatsAppCRM({ mode, shiftId }: Props) {
         fetchSessions();
         fetchStatus();
         if (selectedJid) fetchMessages(selectedJid);
-      }, 2000);
+      }, 4000);
     } else if (connStatus === "connecting") {
       pollRef.current = setInterval(() => {
         fetchStatus();
-      }, 2000);
+      }, 2500);
     } else {
       pollRef.current = setInterval(() => {
         fetchStatus();

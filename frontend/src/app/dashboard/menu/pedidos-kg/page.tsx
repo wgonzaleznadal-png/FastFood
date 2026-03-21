@@ -11,7 +11,7 @@ import {
 import { IconScale, IconPlus, IconTrash, IconChefHat } from "@tabler/icons-react";
 import { api, showApiError } from "@/lib/api";
 import { notifications } from "@mantine/notifications";
-import { fmt } from "@/lib/format";
+import { fmt, moneyNumberInputProps } from "@/lib/format";
 import type { KgProduct } from "@/lib/types";
 import Drawer from "@/components/layout/Drawer";
 import PageHeader from "@/components/layout/PageHeader";
@@ -223,13 +223,12 @@ export default function PedidosKgPage() {
 
           <NumberInput
             label="Precio por kg ($)"
-            placeholder="0.00"
+            placeholder="0,00"
             min={0.01}
-            decimalScale={2}
-            prefix="$"
             value={formPrice}
             onChange={setFormPrice}
             required
+            {...moneyNumberInputProps}
           />
 
           <Switch
