@@ -32,6 +32,29 @@ api.interceptors.request.use((config) => {
 
 // Token sent via httpOnly cookie when withCredentials: true
 
+/**
+ * El backend rota el refresh token en cada POST /auth/refresh. Dos llamadas concurrentes
+ * con el mismo cookie hacen que la segunda falle con 401 y dispare clearAuth (síntoma: “entra y me saca”).
+ */
+let refreshSessionPromise: Promise<void> | null = null;
+
+export async function refreshSessionOnce(): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (!refreshSessionPromise) {
+    refreshSessionPromise = (async () => {
+      try {
+        const { data } = await api.post("/auth/refresh");
+        if (data?.user && data?.tenant) {
+          useAuthStore.getState().setAuth(data.user, data.tenant);
+        }
+      } finally {
+        refreshSessionPromise = null;
+      }
+    })();
+  }
+  await refreshSessionPromise;
+}
+
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> = [];
 
@@ -43,6 +66,11 @@ function processQueue(error: unknown, token: string | null = null) {
   failedQueue = [];
 }
 
+function isAuthRefreshRequest(config: { url?: string } | undefined): boolean {
+  const u = String(config?.url ?? "");
+  return u.includes("/auth/refresh");
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -50,6 +78,13 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       const { clearAuth } = useAuthStore.getState();
+
+      if (isAuthRefreshRequest(originalRequest)) {
+        processQueue(error, null);
+        clearAuth();
+        if (typeof window !== "undefined") window.location.href = "/login";
+        return Promise.reject(error);
+      }
 
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -61,10 +96,7 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await api.post("/auth/refresh");
-        if (data?.user && data?.tenant) {
-          useAuthStore.getState().setAuth(data.user, data.tenant);
-        }
+        await refreshSessionOnce();
         processQueue(null, null);
         return api(originalRequest);
       } catch (refreshError) {

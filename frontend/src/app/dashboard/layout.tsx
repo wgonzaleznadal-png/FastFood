@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissionsStore } from "@/store/permissionsStore";
-import { api } from "@/lib/api";
+import axios from "axios";
+import { api, refreshSessionOnce } from "@/lib/api";
 import { 
   Text, 
   ActionIcon, 
@@ -112,15 +113,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     sessionRenewedRef.current = true;
     void (async () => {
       try {
-        const res = await api.post("/auth/refresh");
-        if (res.data?.user && res.data?.tenant) {
-          useAuthStore.getState().setAuth(res.data.user, res.data.tenant);
+        await refreshSessionOnce();
+      } catch (e) {
+        const st = axios.isAxiosError(e) ? e.response?.status : undefined;
+        // Solo desloguear si el refresh token es inválido; red/5xx no borran la sesión recién logueada
+        if (st === 401) {
+          clearAuth();
+          clearPermissions();
+          router.replace("/login");
+          return;
         }
-      } catch {
-        clearAuth();
-        clearPermissions();
-        router.replace("/login");
-        return;
       }
       await fetchPermissions();
     })();

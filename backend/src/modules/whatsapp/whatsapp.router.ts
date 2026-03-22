@@ -21,7 +21,7 @@ router.use(requireModule("caja"));
 
 // ─── CONNECTION ───────────────────────────────────────────────────────────────
 
-router.post("/connect", requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Request, res: Response, next: NextFunction) => {
+router.post("/connect", requireRole("OWNER", "MANAGER", "CASHIER", "TELEFONISTA"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     // IMPORTANTE: Solo le pasamos el tenantId, el service se encarga del resto
     const result = await connectWhatsApp(req.auth!.tenantId);
@@ -39,7 +39,7 @@ router.post("/disconnect", requireRole("OWNER", "MANAGER"), async (req: Request,
   } catch (err) { console.error("[WA Router] Error en /disconnect:", err); next(err); }
 });
 
-router.get("/status", requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Request, res: Response, next: NextFunction) => {
+router.get("/status", requireRole("OWNER", "MANAGER", "CASHIER", "TELEFONISTA"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(getConnectionStatus(req.auth!.tenantId));
   } catch (err) { console.error("[WA Router] Error en /status:", err); next(err); }
@@ -47,14 +47,14 @@ router.get("/status", requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Re
 
 // ─── SESSIONS (CRM) ──────────────────────────────────────────────────────────
 
-router.get("/sessions", requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Request, res: Response, next: NextFunction) => {
+router.get("/sessions", requireRole("OWNER", "MANAGER", "CASHIER", "TELEFONISTA"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessions = await listSessions(req.auth!.tenantId);
     res.json(sessions);
   } catch (err) { console.error("[WA Router] Error en /sessions:", err); next(err); }
 });
 
-router.get("/messages/:jid", requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Request, res: Response, next: NextFunction) => {
+router.get("/messages/:jid", requireRole("OWNER", "MANAGER", "CASHIER", "TELEFONISTA"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const jid = decodeURIComponent(String(req.params.jid));
     const limit = req.query.limit ? parseInt(String(req.query.limit)) : 100;
@@ -87,7 +87,7 @@ router.patch("/sessions", requireRole("OWNER", "MANAGER"), async (req: Request, 
 
 // ─── SEND MESSAGE (Human intervention from CRM) ──────────────────────────────
 
-router.post("/send", requireRole("OWNER", "MANAGER", "CASHIER"), async (req: Request, res: Response, next: NextFunction) => {
+router.post("/send", requireRole("OWNER", "MANAGER", "CASHIER", "TELEFONISTA"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const input = sendMessageSchema.parse(req.body);
     await sendMessage(req.auth!.tenantId, input.jid, input.text);
