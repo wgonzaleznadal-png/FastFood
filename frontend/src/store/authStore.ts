@@ -57,6 +57,19 @@ export const useAuthStore = create<AuthState>()(
         tenant: s.tenant,
         isAuthenticated: s.isAuthenticated,
       }),
+      /**
+       * Default merge es { ...current, ...persisted }: lo persistido pisa la RAM.
+       * El hydrate de persist corre async: si el usuario ya logueó, un snapshot viejo
+       * de localStorage sobrescribe la sesión y el layout lo echa a los ~1–2 s.
+       */
+      merge: (persistedState, currentState) => {
+        type P = Partial<Pick<AuthState, "user" | "tenant" | "isAuthenticated">>;
+        const p = (persistedState ?? {}) as P;
+        if (currentState.isAuthenticated && currentState.user && currentState.tenant) {
+          return { ...currentState };
+        }
+        return { ...currentState, ...p };
+      },
       onRehydrateStorage: () => (state) => {
         if (state?.user && state?.tenant && !state.isAuthenticated) {
           state.isAuthenticated = true;

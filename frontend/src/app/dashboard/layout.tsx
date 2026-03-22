@@ -4,8 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissionsStore } from "@/store/permissionsStore";
-import axios from "axios";
-import { api, refreshSessionOnce } from "@/lib/api";
+import { api } from "@/lib/api";
 import { 
   Text, 
   ActionIcon, 
@@ -106,27 +105,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [_hasHydrated, isAuthenticated, router]);
 
-  // Tras F5: renovar cookies y recién ahí pedir permisos (evita 401 por token corto vencido).
+  // Cargar permisos una vez. No llamar /auth/refresh acá: tras login las cookies ya sirven;
+  // un refresh extra rota el token y compite con el interceptor (y el persist puede pisar la sesión).
   useEffect(() => {
     if (!_hasHydrated || !isAuthenticated) return;
     if (sessionRenewedRef.current) return;
     sessionRenewedRef.current = true;
-    void (async () => {
-      try {
-        await refreshSessionOnce();
-      } catch (e) {
-        const st = axios.isAxiosError(e) ? e.response?.status : undefined;
-        // Solo desloguear si el refresh token es inválido; red/5xx no borran la sesión recién logueada
-        if (st === 401) {
-          clearAuth();
-          clearPermissions();
-          router.replace("/login");
-          return;
-        }
-      }
-      await fetchPermissions();
-    })();
-  }, [_hasHydrated, isAuthenticated, router, clearAuth, clearPermissions, fetchPermissions]);
+    void fetchPermissions();
+  }, [_hasHydrated, isAuthenticated, fetchPermissions]);
 
   useEffect(() => {
     if (activeShift && turnoPopoverOpen) {
